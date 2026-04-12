@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pentest Report</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; color: #1f2937; }
+  h1 { color: #111827; border-bottom: 2px solid #e5e7eb; }
+  .risk-score { font-size: 2em; font-weight: bold; }
+  .critical { color: #dc2626; }
+  .high { color: #ea580c; }
+  .medium { color: #ca8a04; }
+  .low { color: #16a34a; }
+  .info { color: #6b7280; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #374151; color: white; padding: 8px; }
+  td { border: 1px solid #e5e7eb; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>Penetration Test Report</h1>
+<p><strong>Summary:</strong> {{summary}}</p>
+<p><strong>Risk Score:</strong> <span class="risk-score critical">{{risk_score}}/10</span></p>
+<table>
+  <tr><th>Type</th><th>Severity</th><th>CVSS</th><th>Description</th></tr>
+  {{rows}}
+</table>
+</body>
+</html>

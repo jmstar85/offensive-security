@@ -1,0 +1,126 @@
+"""Plan executor — runs approved steps sequentially, streaming events."""
+from __future__ import annotations
+
+import asyncio
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agents.registry import get_adapter
+from app.core.events import event_bus
+from app.models.session import AgentExecution
+from app.safety.egress_monitor import EgressMonitor
+
+
+class PlanExecutor:
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def execute(
+        self,
+        session_id: uuid.UUID,
+        steps: list[dict],
+        target: dict,
+        whitelist_rules: dict,
+        actor_id: str,
+    ) -> list[dict]:
+        """Execute all approved plan steps. Returns list of per-step results."""
+        egress_monitor = EgressMonitor(session_id, whitelist_rules)
+        all_findings: list[dict] = []
+
+        for step in steps:
+            agent_type = step["agent"]
+            config = step.get("config", {})
+
+            # Create execution record
+            execution = AgentExecution(
+                session_id=session_id,
+                agent_type=agent_type,
+                status="running",
+                config_json=config,
+                started_at=datetime.now(timezone.utc),
+            )
+            self._db.add(execution)
+            await self._db.flush()
+            exec_id = execution.id
+
+            await event_bus.publish(str(session_id), {
+                "type": "agent_started",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "step": step.get("order", 0),
+            })
+
+            adapter = get_adapter(agent_type)
+            container_id_holder: list[str] = []
+            step_findings: list[dict] = []
+
+            try:
+                async for event in adapter.execute(target, config, container_id_holder):
+                    # Register container ID for kill switch
+                    if container_id_holder and not execution.container_id:
+                        execution.container_id = container_id_holder[0]
+                        await self._db.execute(
+                            update(AgentExecution)
+                            .where(AgentExecution.id == exec_id)
+                            .values(container_id=container_id_holder[0])
+                        )
+
+                    # Egress monitor on log lines
+                    if event.event_type == "log":
+                        line = event.data.get("line", "")
+                        safe = await egress_monitor.monitor_log_line(line, actor_id)
+                        if not safe:
+                            return all_findings  # session killed
+
+                    # Broadcast to WebSocket subscribers
+                    await event_bus.publish(str(session_id), {
+                        "type": event.event_type,
+                        "agent": event.agent_type,
+                        "execution_id": str(exec_id),
+                        "data": event.data,
+                    })
+
+                    # Collect findings from final status event
+                    if event.event_type == "status" and "result" in event.data:
+                        result = event.data["result"]
+                        step_findings = result.get("findings", [])
+
+            except Exception as exc:
+                await self._db.execute(
+                    update(AgentExecution)
+                    .where(AgentExecution.id == exec_id)
+                    .values(
+                        status="failed",
+                        ended_at=datetime.now(timezone.utc),
+                        output_json={"error": str(exc)},
+                    )
+                )
+                await event_bus.publish(str(session_id), {
+                    "type": "agent_failed",
+                    "agent": agent_type,
+                    "execution_id": str(exec_id),
+                    "error": str(exc),
+                })
+                continue
+
+            all_findings.extend(step_findings)
+            await self._db.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == exec_id)
+                .values(
+                    status="completed",
+                    ended_at=datetime.now(timezone.utc),
+                    output_json={"findings": step_findings},
+                )
+            )
+            await event_bus.publish(str(session_id), {
+                "type": "agent_completed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "finding_count": len(step_findings),
+            })
+
+        return all_findings
