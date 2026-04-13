@@ -87,7 +87,7 @@ class TestSafetyChainIntegration:
 # ── Plan generation mock integration ─────────────────────────────────────────
 
 class TestPlannerIntegration:
-    """Test AttackPlanner with a mocked Claude API response."""
+    """Test AttackPlanner with a mocked LLM backend."""
 
     def test_planner_parses_valid_json_plan(self):
         import json
@@ -104,19 +104,12 @@ class TestPlannerIntegration:
             ],
         }
 
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=json.dumps(mock_plan))]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_message
+        mock_backend = MagicMock()
+        mock_backend.chat.return_value = json.dumps(mock_plan)
 
-        with patch("app.orchestrator.planner.anthropic.Anthropic", return_value=mock_client), \
-             patch("app.core.config.settings") as mock_settings:
-            mock_settings.anthropic_api_key = "test-key"
-            mock_settings.anthropic_model = "claude-3-5-sonnet"
-
+        with patch("app.orchestrator.planner._create_backend", return_value=mock_backend):
             from app.orchestrator.planner import AttackPlanner
             planner = AttackPlanner()
-            planner._client = mock_client
 
             plan = planner.create_plan(
                 "Scan 192.168.1.0/24",
@@ -134,18 +127,12 @@ class TestPlannerIntegration:
         mock_plan = {"target_summary": "test", "risk_level": "low", "steps": []}
         fenced = f"```json\n{json.dumps(mock_plan)}\n```"
 
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=fenced)]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_message
+        mock_backend = MagicMock()
+        mock_backend.chat.return_value = fenced
 
-        with patch("app.orchestrator.planner.anthropic.Anthropic", return_value=mock_client), \
-             patch("app.core.config.settings") as mock_settings:
-            mock_settings.anthropic_api_key = "test-key"
-            mock_settings.anthropic_model = "claude-3-5-sonnet"
+        with patch("app.orchestrator.planner._create_backend", return_value=mock_backend):
             from app.orchestrator.planner import AttackPlanner
             planner = AttackPlanner()
-            planner._client = mock_client
             plan = planner.create_plan("test", {"ip_ranges": [], "domains": []})
 
         assert plan["risk_level"] == "low"

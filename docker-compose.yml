@@ -24,7 +24,15 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/osa_db
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      # LLM Provider: "copilot" (Enterprise, free), "anthropic", or "github"
+      LLM_PROVIDER: ${LLM_PROVIDER:-copilot}
+      # Copilot Enterprise (auto-detects gh CLI token if empty)
+      COPILOT_TOKEN: ${COPILOT_TOKEN:-}
+      COPILOT_MODEL: ${COPILOT_MODEL:-claude-sonnet-4.6}
+      # Anthropic (direct API — usage-based billing)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # GitHub Models (use GitHub PAT)
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       DEBUG: "true"
     volumes:
       - ./backend:/app

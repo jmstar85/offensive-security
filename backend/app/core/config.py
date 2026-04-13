@@ -15,9 +15,22 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
-    # Claude API
+    # LLM Provider: "copilot" (Copilot Enterprise), "anthropic" (direct), or "github" (GitHub Models)
+    llm_provider: str = "copilot"
+
+    # Copilot Enterprise (uses gh CLI OAuth token — zero-cost with org subscription)
+    copilot_endpoint: str = "https://api.enterprise.githubcopilot.com/chat/completions"
+    copilot_model: str = "claude-sonnet-4.6"
+    copilot_token: str = ""  # auto-detected from `gh auth token` if empty
+
+    # Anthropic (direct API — usage-based billing)
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-20250514"
+
+    # GitHub Models (uses GitHub PAT — requires Copilot Individual/Pro)
+    github_token: str = ""
+    github_models_endpoint: str = "https://models.github.ai/inference"
+    github_model: str = "anthropic/claude-sonnet-4.6"
 
     # Docker
     docker_network: str = "osa_pentest_net"
