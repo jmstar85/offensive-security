@@ -18,6 +18,7 @@ router = APIRouter()
 class SessionCreate(BaseModel):
     project_id: uuid.UUID
     prompt: str
+    workflow_id: uuid.UUID | None = None
 
 
 class SessionResponse(BaseModel):
@@ -51,10 +52,20 @@ async def create_session(
     if not project or project.created_by != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    plan_json: dict | None = None
+    if body.workflow_id is not None:
+        from app.models.workflow import Workflow
+        wf_result = await db.execute(select(Workflow).where(Workflow.id == body.workflow_id))
+        workflow = wf_result.scalar_one_or_none()
+        if not workflow or workflow.project_id != body.project_id:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        plan_json = workflow.dag
+
     session = PentestSession(
         project_id=body.project_id,
         prompt=body.prompt,
         status="pending",
+        plan_json=plan_json,
     )
     db.add(session)
     await db.flush()

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, projects, sessions, reports, audit_logs
+from app.api.v1 import auth, projects, sessions, reports, audit_logs, agents, workflows
 from app.api.v1 import ws
 from app.core.config import settings
 
@@ -37,6 +37,8 @@ app.include_router(reports.router, prefix=f"{settings.api_prefix}/reports", tags
 app.include_router(
     audit_logs.router, prefix=f"{settings.api_prefix}/audit-logs", tags=["audit-logs"]
 )
+app.include_router(agents.router, prefix=settings.api_prefix)
+app.include_router(workflows.router, prefix=settings.api_prefix)
 
 # WebSocket
 app.include_router(ws.router, tags=["websocket"])

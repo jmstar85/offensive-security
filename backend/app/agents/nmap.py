@@ -10,6 +10,22 @@ class NmapAdapter(AgentAdapter):
     agent_type = "nmap"
     docker_image = "osa-agent-nmap:latest"
     risk_level = RiskLevel.LOW
+    OPTIONS_SCHEMA: dict = {
+        "type": "object",
+        "properties": {
+            "scan_profile": {
+                "type": "string",
+                "enum": ["quick", "standard", "thorough", "stealth", "vuln"],
+                "default": "standard",
+                "description": "Predefined scan profile"
+            },
+            "ports": {"type": "string", "default": "", "description": "Port range e.g. 1-1000 or 22,80,443"},
+            "timing": {"type": "integer", "minimum": 0, "maximum": 5, "default": 4, "description": "Timing template T0-T5"},
+            "scripts": {"type": "array", "items": {"type": "string"}, "default": [], "description": "NSE scripts to run"},
+            "os_detection": {"type": "boolean", "default": False},
+            "service_version": {"type": "boolean", "default": True},
+        }
+    }
 
     def get_capabilities(self) -> list[str]:
         return ["port_scan", "service_detection", "os_detection", "network_discovery"]

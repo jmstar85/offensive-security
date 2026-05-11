@@ -10,6 +10,23 @@ class PyRITAdapter(AgentAdapter):
     agent_type = "pyrit"
     docker_image = "osa-agent-pyrit:latest"
     risk_level = RiskLevel.MEDIUM
+    OPTIONS_SCHEMA: dict = {
+        "type": "object",
+        "properties": {
+            "attack_type": {
+                "type": "string",
+                "enum": ["llm_prompt_injection", "llm_jailbreak", "llm_data_extraction", "api_fuzzing"],
+                "description": "Type of AI/LLM attack"
+            },
+            "endpoint": {"type": "string", "description": "Target LLM API endpoint URL"},
+            "iterations": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 50},
+            "strategy": {
+                "type": "string",
+                "enum": ["crescendo", "tree_of_attacks", "flip", "pair"],
+                "default": "crescendo"
+            },
+        }
+    }
 
     def get_capabilities(self) -> list[str]:
         return ["ai_red_teaming", "prompt_injection_test", "jailbreak_detection", "llm_safety"]

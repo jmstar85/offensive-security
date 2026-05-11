@@ -18,6 +18,24 @@ class MetasploitAdapter(AgentAdapter):
     agent_type = "metasploit"
     docker_image = "osa-agent-metasploit:latest"
     risk_level = RiskLevel.HIGH
+    OPTIONS_SCHEMA: dict = {
+        "type": "object",
+        "properties": {
+            "module": {
+                "type": "string",
+                "enum": [
+                    "exploit/multi/handler",
+                    "auxiliary/scanner/portscan/tcp",
+                    "auxiliary/scanner/smb/smb_ms17_010",
+                    "auxiliary/scanner/http/http_version",
+                ],
+                "description": "Metasploit module path (allowlist only)"
+            },
+            "payload": {"type": "string", "default": "", "description": "Payload for exploit modules"},
+            "lhost": {"type": "string", "default": "", "description": "Local host for reverse shells"},
+            "lport": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 4444},
+        }
+    }
 
     def get_capabilities(self) -> list[str]:
         return ["exploit", "post_exploitation", "vulnerability_verification", "credential_test"]

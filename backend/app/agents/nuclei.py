@@ -14,6 +14,19 @@ class NucleiAdapter(AgentAdapter):
     agent_type = "nuclei"
     docker_image = "osa-agent-nuclei:latest"
     risk_level = RiskLevel.MEDIUM
+    OPTIONS_SCHEMA: dict = {
+        "type": "object",
+        "properties": {
+            "severity": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["info", "low", "medium", "high", "critical"]},
+                "default": ["medium", "high", "critical"]
+            },
+            "tags": {"type": "array", "items": {"type": "string"}, "default": [], "description": "Template tags filter"},
+            "rate_limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 150},
+            "concurrency": {"type": "integer", "minimum": 1, "maximum": 50, "default": 25},
+        }
+    }
 
     def get_capabilities(self) -> list[str]:
         return ["cve_scan", "web_vulnerability_scan", "misconfiguration_detection", "exposures"]

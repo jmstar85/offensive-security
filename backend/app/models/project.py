@@ -23,6 +23,7 @@ class Project(Base, UUIDMixin, TimestampMixin):
     sessions: Mapped[list["PentestSession"]] = relationship(
         back_populates="project", cascade="all, delete"
     )
+    workflows: Mapped[list["Workflow"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class Target(Base, UUIDMixin, TimestampMixin):

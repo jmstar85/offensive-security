@@ -61,6 +61,7 @@ class AgentAdapter(ABC):
     agent_type: str
     docker_image: str
     risk_level: RiskLevel = RiskLevel.MEDIUM
+    OPTIONS_SCHEMA: dict = {"type": "object", "properties": {}}
 
     def __init__(self, backend: ExecutionBackend) -> None:
         self.backend = backend
