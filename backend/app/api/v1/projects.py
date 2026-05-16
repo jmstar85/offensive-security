@@ -9,6 +9,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.project import Project, Target
 from app.models.user import User
+from app.api.deps import require_admin
 
 router = APIRouter()
 
@@ -141,3 +142,30 @@ async def delete_project(
     if not project or project.created_by != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
     await db.delete(project)
+
+
+# ── Admin: cross-team project visibility ──────────────────────────────────────
+
+
+class AdminProjectResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    client_name: str
+    description: str | None
+    status: str
+    created_by: uuid.UUID
+
+
+@router.get("/all/admin", response_model=list[AdminProjectResponse])
+async def list_all_projects(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(Project).order_by(Project.created_at.desc()))
+    return [
+        AdminProjectResponse(
+            id=p.id, name=p.name, client_name=p.client_name,
+            description=p.description, status=p.status, created_by=p.created_by,
+        )
+        for p in result.scalars().all()
+    ]

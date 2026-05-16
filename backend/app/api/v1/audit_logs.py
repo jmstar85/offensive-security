@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import require_admin
 from app.core.database import get_db
 from app.models.audit import AuditLog
 from app.models.user import User
@@ -27,9 +27,9 @@ class AuditLogResponse(BaseModel):
 @router.get("/", response_model=list[AuditLogResponse])
 async def list_audit_logs(
     session_id: uuid.UUID | None = None,
-    limit: int = 100,
+    limit: int = Query(default=100, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    admin: User = Depends(require_admin),
 ):
     query = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
     if session_id:

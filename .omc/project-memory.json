@@ -1,0 +1,460 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1778890074122,
+  "projectRoot": "/Users/chrisjung/myproject/offensive-security",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "backend": {
+      "path": "backend",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1778890074084,
+      "keyFiles": [
+        "Dockerfile",
+        "alembic.ini",
+        "pyproject.toml"
+      ]
+    },
+    "ci": {
+      "path": "ci",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1778890074084,
+      "keyFiles": [
+        "build-images.sh"
+      ]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1778890074084,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 5,
+      "lastAccessed": 1778890074084,
+      "keyFiles": [
+        "claude-osint-onboarding.md",
+        "deployment.md",
+        "rescope-flow.md",
+        "risk-tiers.md",
+        "safety.md"
+      ]
+    },
+    "frontend": {
+      "path": "frontend",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1778890074085,
+      "keyFiles": [
+        "Dockerfile",
+        "index.html",
+        "package-lock.json",
+        "package.json",
+        "postcss.config.js"
+      ]
+    },
+    "mcp-server": {
+      "path": "mcp-server",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1778890074085,
+      "keyFiles": [
+        "package-lock.json",
+        "package.json",
+        "tsconfig.json"
+      ]
+    },
+    "backend/app": {
+      "path": "backend/app",
+      "purpose": "Application code",
+      "fileCount": 2,
+      "lastAccessed": 1778890074085,
+      "keyFiles": [
+        "__init__.py",
+        "main.py"
+      ]
+    },
+    "backend/tests": {
+      "path": "backend/tests",
+      "purpose": "Test files",
+      "fileCount": 2,
+      "lastAccessed": 1778890074085,
+      "keyFiles": [
+        "__init__.py",
+        "conftest.py"
+      ]
+    },
+    "frontend/dist": {
+      "path": "frontend/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 3,
+      "lastAccessed": 1778890074085,
+      "keyFiles": [
+        "favicon.svg",
+        "index.html",
+        "manifest.webmanifest"
+      ]
+    },
+    "frontend/node_modules": {
+      "path": "frontend/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1778890074086,
+      "keyFiles": []
+    },
+    "frontend/public": {
+      "path": "frontend/public",
+      "purpose": "Public files",
+      "fileCount": 2,
+      "lastAccessed": 1778890074087,
+      "keyFiles": [
+        "favicon.svg",
+        "manifest.webmanifest"
+      ]
+    },
+    "frontend/src": {
+      "path": "frontend/src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1778890074087,
+      "keyFiles": [
+        "App.tsx",
+        "index.css",
+        "main.tsx"
+      ]
+    },
+    "mcp-server/dist": {
+      "path": "mcp-server/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 28,
+      "lastAccessed": 1778890074087,
+      "keyFiles": [
+        "index.d.ts",
+        "index.d.ts.map",
+        "index.js"
+      ]
+    },
+    "mcp-server/node_modules": {
+      "path": "mcp-server/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 1,
+      "lastAccessed": 1778890074088,
+      "keyFiles": []
+    },
+    "mcp-server/src": {
+      "path": "mcp-server/src",
+      "purpose": "Source code",
+      "fileCount": 7,
+      "lastAccessed": 1778890074088,
+      "keyFiles": [
+        "index.ts",
+        "memory-tools.ts",
+        "model-router.ts"
+      ]
+    },
+    "mcp-server/test": {
+      "path": "mcp-server/test",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1778890074088,
+      "keyFiles": [
+        "run-tests.mjs"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "backend/app/models/session.py",
+      "accessCount": 5,
+      "lastAccessed": 1778728764061,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/orchestrator/planner.py",
+      "accessCount": 5,
+      "lastAccessed": 1778728884627,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/orchestrator/service.py",
+      "accessCount": 5,
+      "lastAccessed": 1778728888453,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages/ProjectDetail.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1778759238654,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/core/config.py",
+      "accessCount": 3,
+      "lastAccessed": 1778728784784,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/api/client.ts",
+      "accessCount": 3,
+      "lastAccessed": 1778759075764,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1778759226256,
+      "type": "file"
+    },
+    {
+      "path": "backend/pyproject.toml",
+      "accessCount": 3,
+      "lastAccessed": 1778765414981,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/unit/test_agents.py",
+      "accessCount": 2,
+      "lastAccessed": 1778741098303,
+      "type": "file"
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "accessCount": 2,
+      "lastAccessed": 1778765038771,
+      "type": "file"
+    },
+    {
+      "path": "backend/alembic/env.py",
+      "accessCount": 2,
+      "lastAccessed": 1778765331825,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 1,
+      "lastAccessed": 1778586461347,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/orchestrator/executor.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586596486,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/agents/registry.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586597028,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/agents/base.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586597542,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/models/project.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586598290,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/api/v1/sessions.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586598871,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/safety/whitelist.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586605227,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/safety/exploit_allowlist.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586605615,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/safety/risk_filter.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586605908,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/safety/egress_monitor.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586606706,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586607154,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/api/v1/users.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586607435,
+      "type": "file"
+    },
+    {
+      "path": "backend/alembic/versions/002_rbac.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586607832,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/agents/nmap.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586608598,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/agents/nuclei.py",
+      "accessCount": 1,
+      "lastAccessed": 1778586608993,
+      "type": "file"
+    },
+    {
+      "path": "backend/alembic/versions/003_session_workflow_columns.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728733255,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/services/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728785959,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/services/pricing.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728791003,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/orchestrator/model_selector.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728796905,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/services/budget_guard.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728809728,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/orchestrator/model_client.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728820038,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/unit/test_pricing.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728903135,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/unit/test_model_selector.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728908928,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/unit/test_budget_guard.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728916531,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/unit/test_model_client_retries.py",
+      "accessCount": 1,
+      "lastAccessed": 1778728926213,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/WorkflowChat.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759090946,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/DraftStepEditor.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759117322,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/ApprovalPreviewPanel.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759129264,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/ForceApproveModal.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759138194,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/components/RescopeModal.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759155718,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages/PentestWorkflow.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1778759197405,
+      "type": "file"
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "accessCount": 1,
+      "lastAccessed": 1778765025867,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

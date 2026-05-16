@@ -53,7 +53,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         email=body.email,
         password_hash=hash_password(body.password),
         full_name=body.full_name,
-        role="admin",
+        role="member",
         team_id=team.id,
     )
     db.add(user)

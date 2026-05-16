@@ -1,0 +1,43 @@
+# GitHub code-search dork templates.
+# Substitute {{ORG}} or {{DOMAIN}} when emitting queries.
+# All searches are READ-ONLY; never clone repos that show up here.
+templates:
+  org_email_in_code:
+    query: 'org:{{ORG}} "@{{DOMAIN}}"'
+    description: Email addresses tied to the org in code.
+  org_password_keyword:
+    query: 'org:{{ORG}} password'
+    description: Loose password keyword scan; high false-positive rate.
+  org_aws_key:
+    query: 'org:{{ORG}} AKIA'
+    description: AWS access key prefix.
+  org_gcp_key:
+    query: 'org:{{ORG}} "-----BEGIN PRIVATE KEY-----"'
+    description: Service-account JSON or PEM keys.
+  org_slack_token:
+    query: 'org:{{ORG}} "xoxb-"'
+    description: Slack bot tokens.
+  org_anthropic_key:
+    query: 'org:{{ORG}} "sk-ant-"'
+    description: Anthropic API keys.
+  org_openai_key:
+    query: 'org:{{ORG}} "sk-proj-"'
+    description: OpenAI project keys.
+  org_huggingface:
+    query: 'org:{{ORG}} "hf_"'
+    description: Hugging Face access tokens.
+  domain_email_search:
+    query: '"@{{DOMAIN}}" extension:env'
+    description: .env files containing org emails.
+  domain_in_settings:
+    query: '"{{DOMAIN}}" filename:settings.py'
+    description: Django settings referencing the target.
+  postman_export:
+    query: '"{{DOMAIN}}" extension:json filename:postman_collection'
+    description: Exposed Postman collections.
+  helm_values:
+    query: '"{{DOMAIN}}" filename:values.yaml'
+    description: Helm chart values exposing internal URLs.
+  k8s_secrets:
+    query: '"{{DOMAIN}}" filename:secret.yaml'
+    description: Plain-text Kubernetes secret manifests.

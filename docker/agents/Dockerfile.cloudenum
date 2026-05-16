@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir cloud-enum==0.7
+ENTRYPOINT ["cloudenum"]

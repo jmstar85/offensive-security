@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.project import Project
 from app.models.session import AgentExecution, PentestSession
 from app.models.user import User
+from app.orchestrator.workflow_plan import WorkflowPlanError, normalize_workflow_plan
 
 router = APIRouter()
 
@@ -18,6 +19,7 @@ router = APIRouter()
 class SessionCreate(BaseModel):
     project_id: uuid.UUID
     prompt: str
+    workflow_id: uuid.UUID | None = None
 
 
 class SessionResponse(BaseModel):
@@ -51,10 +53,29 @@ async def create_session(
     if not project or project.created_by != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    plan_json: dict | None = None
+    if body.workflow_id is not None:
+        from app.models.workflow import Workflow
+
+        wf_result = await db.execute(
+            select(Workflow).where(
+                Workflow.id == body.workflow_id,
+                Workflow.project_id == body.project_id,
+            )
+        )
+        workflow = wf_result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        try:
+            plan_json = normalize_workflow_plan(workflow.dag)
+        except WorkflowPlanError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     session = PentestSession(
         project_id=body.project_id,
         prompt=body.prompt,
         status="pending",
+        plan_json=plan_json,
     )
     db.add(session)
     await db.flush()

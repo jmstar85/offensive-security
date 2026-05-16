@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"PYTHONPATH=/Users/chrisjung/myproject/offensive-security/backend /Users/chrisjung/myproject/offensive-security/backend/.venv/bin/python -m pytest tests/ -v --tb=short 2>&1\",\"timeout\":12000...",
+  "error": "Exit code 1\n============================= test session starts ==============================\nplatform darwin -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0 -- /Users/chrisjung/myproject/offensive-security/backend/.venv/bin/python\ncachedir: .pytest_cache\nrootdir: /Users/chrisjung/myproject/offensive-security/backend\nconfigfile: pyproject.toml\nplugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0\nasyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope...",
+  "timestamp": "2026-04-12T12:24:18.716Z",
+  "retry_count": 1
+}

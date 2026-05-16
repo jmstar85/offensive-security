@@ -1,0 +1,64 @@
+{
+  "title": "OSA — Model Costs",
+  "uid": "osa-model-costs",
+  "tags": ["osa", "cost", "anthropic"],
+  "timezone": "UTC",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {"from": "now-24h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Tokens consumed (input vs output, by model)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (model, phase) (rate(osa_anthropic_tokens_total[5m]))",
+          "legendFormat": "{{model}} {{phase}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "USD spend last 24h (per model)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (model) (increase(osa_anthropic_usd_cost_total[24h]))",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "USD spend by team (24h)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (team_id, model) (increase(osa_anthropic_usd_cost_total[24h]))",
+          "format": "table"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "USD/hour by model (rolling 1h)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(osa_anthropic_usd_cost_total[1h])) * 3600",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ]
+}

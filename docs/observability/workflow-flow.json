@@ -1,0 +1,94 @@
+{
+  "title": "OSA — Workflow Flow",
+  "uid": "osa-workflow-flow",
+  "tags": ["osa", "workflow"],
+  "timezone": "UTC",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Interview turns by outcome (rate)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(osa_session_interview_turns_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Sessions waiting in needs_human_review",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(osa_session_interview_turns_total{outcome=\"needs_human_review\"}[1h]))",
+          "legendFormat": "needs_human_review (1h)"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Sessions reached ready_for_review (1h)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(osa_session_interview_turns_total{outcome=\"ready_for_review\"}[1h]))",
+          "legendFormat": "ready_for_review (1h)"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 4,
+      "type": "heatmap",
+      "title": "Ambiguity score distribution",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (bucket) (rate(osa_session_ambiguity_score[5m]))",
+          "legendFormat": "{{bucket}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 5,
+      "type": "histogram",
+      "title": "Time to ready_for_review (seconds)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(osa_session_time_to_ready_for_review_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(osa_session_time_to_ready_for_review_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p50"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Domain-agent dispatch",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (domain, result) (rate(osa_domain_agent_dispatch_total[5m]))",
+          "legendFormat": "{{domain}} / {{result}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+    }
+  ]
+}

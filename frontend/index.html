@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Offensive Security Agent</title>
+    <meta name="description" content="AI-powered penetration testing workflow platform for authorized security assessments." />
+    <meta name="theme-color" content="#991b1b" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>OSA Platform — AI-Powered Penetration Testing</title>
+    <script>
+      (() => {
+        const theme = localStorage.getItem("osa-theme") || "dark";
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        document.documentElement.dataset.theme = theme === "light" ? "light" : "dark";
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

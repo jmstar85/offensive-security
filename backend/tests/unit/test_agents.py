@@ -205,6 +205,7 @@ class TestAgentRegistry:
                 get_adapter("unknown_tool")
 
     def test_list_agent_types(self):
+        """Legacy agent slugs must still be registered (plan v3.2.1 extends, not replaces)."""
         from app.agents.registry import list_agent_types
-        types = list_agent_types()
-        assert set(types) == {"nmap", "nuclei", "metasploit", "pyrit"}
+        types = set(list_agent_types())
+        assert {"nmap", "nuclei", "metasploit", "pyrit"} <= types

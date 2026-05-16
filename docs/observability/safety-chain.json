@@ -1,0 +1,77 @@
+{
+  "title": "OSA — Safety Chain",
+  "uid": "osa-safety-chain",
+  "tags": ["osa", "safety", "rescope"],
+  "timezone": "UTC",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Rescope events by action",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(osa_rescope_events_total[5m]))",
+          "legendFormat": "{{action}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Auto-drop count (24h)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(osa_rescope_events_total{action=\"auto_drop\"}[24h]))",
+          "legendFormat": "auto_drop"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Force-approve overrides (24h)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(osa_session_interview_turns_total{outcome=\"ready_for_review\"}[24h]))",
+          "legendFormat": "ready_for_review"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Discovered-target classification",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(osa_active_recon_targets_total[5m]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Knowledge-loader outcomes",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(osa_knowledge_load_total[5m]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
+}

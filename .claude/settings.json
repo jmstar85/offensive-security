@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Skill(oh-my-claudecode:ralph)",
+      "Skill(oh-my-claudecode:ralph:*)",
+      "Bash(PYTHONPATH=. .venv/bin/python -m pytest tests/unit/test_pricing.py tests/unit/test_model_selector.py tests/unit/test_budget_guard.py tests/unit/test_model_client_retries.py -v)",
+      "Bash(PYTHONPATH=. .venv/bin/python -m pytest tests/ -v)",
+      "Bash(PYTHONPATH=. .venv/bin/python -c ' *)",
+      "Bash(PYTHONPATH=. .venv/bin/python -m pytest tests/)",
+      "Bash(PYTHONPATH=. .venv/bin/python -m pytest tests/integration/test_domain_agents_api.py -v)"
+    ]
+  }
+}

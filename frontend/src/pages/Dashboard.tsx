@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listProjects, listSessions } from '../api/client'
+import { getMe, listProjects, listSessions } from '../api/client'
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     listProjects().then((r) => setProjects(r.data))
     listSessions().then((r) => setSessions(r.data))
+    getMe().then((r) => setIsAdmin(r.data.role === 'admin')).catch(() => {})
   }, [])
 
   const activeSessions = sessions.filter((s) => s.status === 'running')
@@ -20,7 +22,8 @@ export default function Dashboard() {
         <div className="flex gap-4">
           <Link to="/projects" className="text-gray-300 hover:text-white">Projects</Link>
           <Link to="/reports" className="text-gray-300 hover:text-white">Reports</Link>
-          <button onClick={() => { localStorage.removeItem('token'); window.location.href = '/login' }}
+          {isAdmin && <Link to="/admin" className="text-red-400 hover:text-red-300">Admin</Link>}
+          <button onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/login' }}
             className="text-gray-400 hover:text-red-400">Logout</button>
         </div>
       </nav>

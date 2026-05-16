@@ -12,6 +12,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Override sqlalchemy.url from runtime settings so alembic works inside docker
+# (DATABASE_URL → postgres:5432) and outside (localhost:5432) without an
+# environment-specific alembic.ini edit.
+from app.core.config import settings  # noqa: E402
+config.set_main_option("sqlalchemy.url", settings.database_url)
+
 # Import all models so Alembic can detect them
 from app.models import Base  # noqa: E402, F401
 from app.models import User, Team, Project, Target  # noqa: F401

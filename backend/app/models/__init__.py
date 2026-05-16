@@ -5,6 +5,7 @@ from app.models.session import PentestSession, AgentExecution, AttackScenario
 from app.models.report import Report
 from app.models.audit import AuditLog
 from app.models.agent import AgentRegistry
+from app.models.workflow import Workflow
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "Report",
     "AuditLog",
     "AgentRegistry",
+    "Workflow",
 ]
