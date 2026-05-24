@@ -13,10 +13,16 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.agents.backends.docker import get_docker_backend
+from app.agents.backends.kali import get_kali_backend
 from app.agents.base import AgentAdapter, RiskLevel
 from app.agents.cloudenum import CloudEnumAdapter
 from app.agents.dnsx import DnsxAdapter
 from app.agents.httpx_tool import HttpxAdapter
+from app.agents.kali_exec import (
+    KaliGobusterAdapter,
+    KaliNiktoAdapter,
+    KaliSqlmapAdapter,
+)
 from app.agents.metasploit import MetasploitAdapter
 from app.agents.nmap import NmapAdapter
 from app.agents.nuclei import NucleiAdapter
@@ -168,6 +174,37 @@ _REGISTRY: dict[str, ToolEntry] = {
         default_risk_band=RiskLevel.LOW,
         is_destructive_capable=False,
     ),
+    # ── Kali coexistence (PR-5; digest pin lands in PR-6 via env) ────────
+    "kali_gobuster": ToolEntry(
+        slug="kali_gobuster",
+        adapter_cls=KaliGobusterAdapter,
+        docker_image="osa-kali:latest",
+        tier="active_recon",
+        capabilities=("dir_brute", "dns_brute", "vhost_brute"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "kali_sqlmap": ToolEntry(
+        slug="kali_sqlmap",
+        adapter_cls=KaliSqlmapAdapter,
+        docker_image="osa-kali:latest",
+        tier="active_exploit",
+        capabilities=("sqli_detect", "sqli_exploit"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+    ),
+    "kali_nikto": ToolEntry(
+        slug="kali_nikto",
+        adapter_cls=KaliNiktoAdapter,
+        docker_image="osa-kali:latest",
+        tier="active_recon",
+        capabilities=("web_vuln_scan",),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
 }
 
 
@@ -175,10 +212,18 @@ _REGISTRY: dict[str, ToolEntry] = {
 
 
 def get_adapter(agent_type: str) -> AgentAdapter:
-    """Return an instantiated adapter for the slug (backward-compatible)."""
+    """Return an instantiated adapter for the slug.
+
+    Kali slugs (``kali_*``) route through ``KaliBackend`` (the hardened
+    sibling); every other slug stays on the legacy ``DockerBackend`` to
+    preserve Principle 5 (coexist, do not migrate). Feature-flag
+    enforcement (``OSA_KALI_BACKEND_ENABLED``) lands in PR-9.
+    """
     entry = _REGISTRY.get(agent_type)
     if not entry:
         raise ValueError(f"Unknown agent type: {agent_type}")
+    if agent_type.startswith("kali_"):
+        return entry.adapter_cls(backend=get_kali_backend())
     return entry.adapter_cls(backend=get_docker_backend())
 
 
