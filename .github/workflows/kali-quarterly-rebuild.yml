@@ -1,0 +1,80 @@
+name: kali-quarterly-rebuild
+
+# Quarterly rebuild + SBOM/apt-snapshot drift surveillance (PR-8 / A3.4).
+# The cron runs the first day of each quarter (Jan 1, Apr 1, Jul 1, Oct 1).
+# workflow_dispatch lets a human trigger an out-of-cycle rebuild.
+
+on:
+  schedule:
+    - cron: "0 0 1 */3 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install syft (SBOM generator)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Lint Kali Dockerfile
+        run: bash scripts/lint_kali_dockerfile.sh
+
+      - name: Resolve current upstream digest
+        id: resolve
+        run: |
+          set -euo pipefail
+          source docker/kali/kali.env
+          docker pull kalilinux/kali-rolling >/dev/null
+          NEW_DIGEST="$(docker image inspect --format '{{index .RepoDigests 0}}' kalilinux/kali-rolling \
+            | awk -F@sha256: '{print $2}')"
+          echo "old_digest=${KALI_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "new_digest=${NEW_DIGEST}"  >> "$GITHUB_OUTPUT"
+
+      - name: Build osa-kali image
+        run: make build-kali
+
+      - name: SBOM diff vs previous run
+        id: sbom-diff
+        run: |
+          set -euo pipefail
+          PREV="$(ls -1t .omc/sbom/kali-base-*.json 2>/dev/null | sed -n '2p' || true)"
+          CUR="$(ls -1t .omc/sbom/kali-base-*.json | head -1)"
+          if [ -n "${PREV}" ]; then
+            CHANGES="$(diff -u "${PREV}" "${CUR}" | grep -cE '^[+-]' || true)"
+          else
+            CHANGES=0
+          fi
+          echo "changes=${CHANGES}" >> "$GITHUB_OUTPUT"
+
+      - name: Slack alert on drift (>=5 SBOM lines or apt-snapshot rotation)
+        if: ${{ steps.sbom-diff.outputs.changes >= 5 || steps.resolve.outputs.old_digest != steps.resolve.outputs.new_digest }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.KALI_QUARTERLY_SLACK_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -nc \
+            --arg old "${{ steps.resolve.outputs.old_digest }}" \
+            --arg new "${{ steps.resolve.outputs.new_digest }}" \
+            --arg ch  "${{ steps.sbom-diff.outputs.changes }}" \
+            '{text: "kali-quarterly-rebuild: digest \($old) -> \($new); SBOM diff lines: \($ch)"}')"
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            --data "$payload" "${SLACK_WEBHOOK_URL}"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: osa-kali-sbom
+          path: .omc/sbom/*.json
+          retention-days: 365

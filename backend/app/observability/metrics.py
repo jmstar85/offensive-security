@@ -177,6 +177,33 @@ class MetricsRegistry:
             "Knowledge-loader invocations partitioned by result.",
             ("result",),
         )
+        # ── Kali coexistence (PR-8) — 5 new counters wire into the safety/audit
+        # chain and the docker-socket-proxy / Python middleware front line. ──
+        self.kali_exec_total = _CounterFacade(
+            "osa_kali_exec_total",
+            "KaliBackend tool executions partitioned by slug and outcome.",
+            ("tool_slug", "outcome"),
+        )
+        self.kali_shim_block_total = _CounterFacade(
+            "osa_kali_shim_block_total",
+            "WhitelistShim rejections partitioned by deny reason.",
+            ("reason",),
+        )
+        self.kali_container_start_failures_total = _CounterFacade(
+            "osa_kali_container_start_failures_total",
+            "KaliBackend.start container creation failures partitioned by reason.",
+            ("reason",),
+        )
+        self.kali_socket_proxy_403_total = _CounterFacade(
+            "osa_kali_socket_proxy_403_total",
+            "docker-socket-proxy 403 responses partitioned by endpoint.",
+            ("endpoint",),
+        )
+        self.kali_filter_plan_block_total = _CounterFacade(
+            "osa_kali_filter_plan_block_total",
+            "Steps dropped by filter_plan_steps kali_* branch.",
+            ("tool_slug", "reason"),
+        )
 
 
 metrics = MetricsRegistry()

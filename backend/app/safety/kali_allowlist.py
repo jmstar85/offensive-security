@@ -27,11 +27,17 @@ _audit_logger = logging.getLogger("osa.safety.kali_audit")
 def audit_safety_event(event: str, payload: dict[str, Any]) -> None:
     """Module-level safety-event emitter.
 
-    PR-3 ships a logging-only implementation. PR-8 extends this to
-    Prometheus counters + DB persistence. Tests monkeypatch this symbol
-    to capture emissions deterministically.
+    PR-3 shipped the logging facade. PR-8 wires Prometheus counters via
+    ``app.safety.audit.emit_kali_metric``. DB persistence stays at the
+    AuditLogger interface (caller-driven, transactional). Tests monkeypatch
+    this symbol to capture emissions deterministically.
     """
     _audit_logger.info("%s %s", event, payload)
+    # Lazy import breaks the kali_allowlist → audit → models import cycle
+    # (audit.py imports SQLAlchemy models that themselves can ultimately
+    # reach back into safety surfaces).
+    from app.safety.audit import emit_kali_metric
+    emit_kali_metric(event, payload)
 
 
 class SafetyViolation(Exception):
