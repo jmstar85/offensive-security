@@ -19,6 +19,13 @@ from app.agents.registry import (
     list_agent_types,
     palette_for_domain,
 )
+from app.core.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _enable_kali_backend(monkeypatch):
+    """PR-9 added OSA_KALI_BACKEND_ENABLED; tests here exercise the kali path."""
+    monkeypatch.setattr(settings, "osa_kali_backend_enabled", True)
 
 
 # --- build_command -----------------------------------------------------------

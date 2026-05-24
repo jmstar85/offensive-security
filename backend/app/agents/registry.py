@@ -14,6 +14,7 @@ from typing import Literal
 
 from app.agents.backends.docker import get_docker_backend
 from app.agents.backends.kali import get_kali_backend
+from app.core.config import settings
 from app.agents.base import AgentAdapter, RiskLevel
 from app.agents.cloudenum import CloudEnumAdapter
 from app.agents.dnsx import DnsxAdapter
@@ -37,6 +38,16 @@ Tier = Literal[
     "active_recon",
     "active_exploit",
 ]
+
+
+class KaliBackendDisabledError(RuntimeError):
+    """Raised when get_adapter() is asked for a kali_* slug while the feature
+    flag ``OSA_KALI_BACKEND_ENABLED`` is False (default).
+
+    PR-9 enforces this at both ``get_adapter`` (call-time) and
+    ``palette_for_domain`` (plan-time) so the planner never even surfaces
+    a kali_* option when the flag is off.
+    """
 
 
 @dataclass(frozen=True)
@@ -215,14 +226,19 @@ def get_adapter(agent_type: str) -> AgentAdapter:
     """Return an instantiated adapter for the slug.
 
     Kali slugs (``kali_*``) route through ``KaliBackend`` (the hardened
-    sibling); every other slug stays on the legacy ``DockerBackend`` to
-    preserve Principle 5 (coexist, do not migrate). Feature-flag
-    enforcement (``OSA_KALI_BACKEND_ENABLED``) lands in PR-9.
+    sibling) and require the ``OSA_KALI_BACKEND_ENABLED`` flag; every other
+    slug stays on the legacy ``DockerBackend`` to preserve Principle 5
+    (coexist, do not migrate).
     """
     entry = _REGISTRY.get(agent_type)
     if not entry:
         raise ValueError(f"Unknown agent type: {agent_type}")
     if agent_type.startswith("kali_"):
+        if not settings.osa_kali_backend_enabled:
+            raise KaliBackendDisabledError(
+                f"kali backend disabled — set OSA_KALI_BACKEND_ENABLED=true to enable "
+                f"(slug={agent_type})"
+            )
         return entry.adapter_cls(backend=get_kali_backend())
     return entry.adapter_cls(backend=get_docker_backend())
 
@@ -241,8 +257,18 @@ def list_tool_entries() -> list[ToolEntry]:
 
 
 def palette_for_domain(domain_tags: frozenset[str]) -> list[ToolEntry]:
-    """Return tools whose ``applicable_domain_tags`` intersect ``domain_tags``."""
-    return [t for t in _REGISTRY.values() if t.applicable_domain_tags & domain_tags]
+    """Return tools whose ``applicable_domain_tags`` intersect ``domain_tags``.
+
+    kali_* tools are filtered out when ``OSA_KALI_BACKEND_ENABLED`` is False
+    (double enforcement with ``get_adapter`` — the planner never even sees
+    them as options when the flag is off).
+    """
+    kali_enabled = settings.osa_kali_backend_enabled
+    return [
+        t for t in _REGISTRY.values()
+        if t.applicable_domain_tags & domain_tags
+        and (kali_enabled or not t.slug.startswith("kali_"))
+    ]
 
 
 def register_tool_entry(entry: ToolEntry) -> None:

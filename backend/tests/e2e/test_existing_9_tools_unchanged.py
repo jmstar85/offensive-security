@@ -16,6 +16,12 @@ import pytest
 from app.agents.backends.docker import DockerBackend
 from app.agents.backends.kali import KaliBackend
 from app.agents.registry import get_adapter
+from app.core.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _enable_kali_backend(monkeypatch):
+    monkeypatch.setattr(settings, "osa_kali_backend_enabled", True)
 
 LEGACY_SLUGS: tuple[str, ...] = (
     "nmap", "nuclei", "metasploit", "pyrit",
