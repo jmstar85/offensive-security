@@ -30,12 +30,59 @@ services:
       # and the DeprecationBanner on Monitor/PentestWorkflow/AgentCatalog.
       # Default in code is False; this override enables the new UI.
       OSA_FLOW_UI_ENABLED: "true"
+      # Kali coexistence (PR-7) — KaliBackend ONLY talks to the proxy chain
+      # (image filter -> docker-socket-proxy -> dockerd). DockerBackend keeps
+      # the direct host-socket mount unchanged per Principle 5.
+      KALI_DOCKER_HOST: tcp://kali-socket-proxy-filter:2375
+      DOCKER_TLS_VERIFY: ""
+      DOCKER_CERT_PATH: ""
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Kali coexistence (PR-7) image-regex middleware in front of the tecnativa
+  # proxy. KaliBackend's docker client targets THIS service; the middleware
+  # rejects POST /containers/create whose Image is not `^osa-kali(:|@)`.
+  kali-socket-proxy-filter:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["uvicorn", "app.infra.socket_proxy_filter:create_app",
+              "--factory", "--host", "0.0.0.0", "--port", "2375",
+              "--app-dir", "/app"]
+    environment:
+      SOCKET_PROXY_UPSTREAM: http://docker-socket-proxy:2375
+    depends_on:
+      - docker-socket-proxy
+    expose:
+      - "2375"
+
+  # Endpoint-allowlist proxy in front of dockerd. Only the 6 endpoints the
+  # KaliBackend client uses are exposed; everything else returns 403. Image
+  # body inspection is layered on top by kali-socket-proxy-filter (PR-7
+  # split: tecnativa enforces verb+path, our middleware enforces body).
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      EXEC: 0
+      INFO: 0
+      SERVICES: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      BUILD: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
 
   frontend:
     build:

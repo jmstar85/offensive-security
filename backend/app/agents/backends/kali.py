@@ -50,9 +50,19 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
 class KaliBackend(ExecutionBackend):
     def __init__(self) -> None:
-        # PR-2: docker.from_env() for now; PR-7 will switch to
-        # docker.DockerClient(base_url=settings.kali_docker_host).
-        self._client = docker.from_env()
+        # PR-7: KaliBackend routes through the docker-socket-proxy + image-regex
+        # middleware (settings.kali_docker_host). DockerBackend keeps its
+        # host-socket client unchanged (Principle 5).
+        from app.core.config import settings
+
+        # version pinned so __init__ does not perform a synchronous server
+        # handshake — KaliBackend instances must be constructable in test envs
+        # where the proxy isn't reachable. Real failures surface at start().
+        self._client = docker.DockerClient(
+            base_url=settings.kali_docker_host,
+            version="1.43",
+            timeout=60,
+        )
 
     async def start(
         self,

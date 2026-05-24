@@ -45,30 +45,28 @@ def test_kali_backend_is_not_docker_backend_subclass() -> None:
 
 
 def test_kali_backend_has_isolated_docker_client() -> None:
-    # Both backends call `docker.from_env()`; patching the symbol once and
-    # using `side_effect` to yield distinct objects exercises the property
-    # we actually care about: each backend __init__ calls from_env() and
-    # captures its own client (no shared singleton).
-    with patch("docker.from_env") as from_env:
-        from_env.side_effect = [
-            MagicMock(name="kali-client"),
-            MagicMock(name="docker-client"),
-        ]
+    # PR-7: KaliBackend uses docker.DockerClient(base_url=...) and
+    # DockerBackend keeps docker.from_env() — separate clients by construction.
+    with patch("app.agents.backends.kali.docker.DockerClient") as kali_dc, \
+         patch("docker.from_env") as from_env:
+        kali_dc.return_value = MagicMock(name="kali-client")
+        from_env.return_value = MagicMock(name="docker-client")
         kb = KaliBackend()
         db = DockerBackend()
     assert kb._client is not db._client
-    assert from_env.call_count == 2
+    assert kali_dc.call_count == 1
+    assert from_env.call_count == 1
 
 
 # ---------------------------------------------------------------- contract
 
 def _make_backend_with_mock_client() -> tuple[KaliBackend, MagicMock]:
-    with patch("app.agents.backends.kali.docker.from_env") as from_env:
+    with patch("app.agents.backends.kali.docker.DockerClient") as dc:
         client = MagicMock(name="docker-client")
         # containers.run returns an object with .id
         run_result = MagicMock(id="container-abc123")
         client.containers.run.return_value = run_result
-        from_env.return_value = client
+        dc.return_value = client
         kb = KaliBackend()
     return kb, client
 

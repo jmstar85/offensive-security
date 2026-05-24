@@ -1,0 +1,18 @@
+# CODEOWNERS — review gates for security-critical surfaces.
+#
+# All paths listed below require @security-reviewer approval before merge.
+# Branch protection on `main` enables "Require review from Code Owners" and
+# "Dismiss stale pull request approvals when new commits are pushed".
+# The @security-reviewer placeholder team must be created in the org settings
+# before CODEOWNERS enforcement is enabled; see docs/runbooks/kali-backend.md.
+
+# Kali coexistence surface (image + apt snapshot + env files)
+docker/kali/**                              @security-reviewer
+docker/kali/kali.env                        @security-reviewer
+docker/kali/kali-apt-snapshot.env           @security-reviewer
+
+# Single-source allowlist + verifier
+backend/app/safety/kali_allowlist.py        @security-reviewer
+
+# Socket-proxy image-regex middleware (F3 mitigation)
+backend/app/infra/socket_proxy_filter.py    @security-reviewer
