@@ -8,6 +8,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useParams } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { FindingsPanel, type Finding } from "../components/FindingsPanel";
 
 interface AgentNodeData {
   agent_type: string;
@@ -54,6 +55,8 @@ export default function InteractionDashboard() {
   const [edges] = useState<Edge[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [rightPane, setRightPane] = useState<"events" | "findings">("findings");
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -61,7 +64,7 @@ export default function InteractionDashboard() {
   const doneCount = nodes.filter(n => n.data.status === "done").length;
   const totalCount = nodes.length;
   const progressPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-  const findingsCount = logs.filter(l => l.includes("[finding]")).length;
+  const findingsCount = findings.length;
 
   useEffect(() => {
     if (!sessionId) return;
@@ -77,6 +80,17 @@ export default function InteractionDashboard() {
         } else if (msg.event_type === "status") {
           const status = msg.data?.status;
           const agentType = msg.agent_type;
+          // The backend bundles structured AgentResult.findings into the
+          // terminal "completed"/"failed" status event. Extract them so the
+          // UI can render type-aware cards instead of relying on a stringly
+          // typed log scan.
+          const result = msg.data?.result;
+          const newFindings: Finding[] = Array.isArray(result?.findings)
+            ? result.findings
+            : [];
+          if (newFindings.length > 0) {
+            setFindings(prev => [...prev, ...newFindings]);
+          }
           setNodes(prev => {
             const existing = prev.find(n => n.data.agent_type === agentType);
             if (existing) {
@@ -141,20 +155,47 @@ export default function InteractionDashboard() {
         </div>
 
         <aside className="w-80 border-l border-border bg-card flex flex-col">
-          <div className="px-4 py-3 border-b border-border">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <div className="px-4 py-2 border-b border-border flex gap-1">
+            <button
+              type="button"
+              onClick={() => setRightPane("findings")}
+              className={cn(
+                "text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded transition-colors",
+                rightPane === "findings"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Findings <span className="ml-1 text-[10px] text-muted-foreground">×{findingsCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPane("events")}
+              className={cn(
+                "text-xs font-semibold uppercase tracking-wide px-2 py-1 rounded transition-colors",
+                rightPane === "events"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
               {selectedNodeId ? `Logs — ${selectedNodeId}` : "Event Stream"}
-            </p>
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-xs text-muted-foreground space-y-0.5">
-            {logs.map((line, i) => (
-              <div key={i} className="break-all">{line}</div>
-            ))}
-            {logs.length === 0 && (
-              <div className="text-center pt-8">No events yet</div>
-            )}
-            <div ref={logsEndRef} />
-          </div>
+          {rightPane === "findings" ? (
+            <div className="flex-1 overflow-y-auto p-3">
+              <FindingsPanel findings={findings} />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs text-muted-foreground space-y-0.5">
+              {logs.map((line, i) => (
+                <div key={i} className="break-all">{line}</div>
+              ))}
+              {logs.length === 0 && (
+                <div className="text-center pt-8">No events yet</div>
+              )}
+              <div ref={logsEndRef} />
+            </div>
+          )}
         </aside>
       </div>
     </div>
