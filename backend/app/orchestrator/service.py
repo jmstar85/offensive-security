@@ -18,8 +18,9 @@ from app.orchestrator.workflow_plan import (
     topologically_sorted_steps,
 )
 from app.reports.generator import ReportGenerator
+from app.agents.registry import get_tool_entry
 from app.safety.audit import AuditLogger
-from app.safety.exploit_allowlist import filter_plan_steps
+from app.safety.exploit_allowlist import filter_by_tier_flags, filter_plan_steps
 from app.safety.risk_filter import RiskFilter
 from app.safety.whitelist import WhitelistValidator
 
@@ -153,8 +154,26 @@ class OrchestratorService:
             await self._db.commit()
             steps = plan.get("steps", [])
 
+        # Ensure every step carries its ToolEntry tier — the planner does not
+        # always emit one, and filter_by_tier_flags reads step["tier"].
+        for step in steps:
+            if step.get("tier"):
+                continue
+            entry = get_tool_entry(step.get("agent", ""))
+            if entry is not None:
+                step["tier"] = entry.tier
+
         # 7. Exploit allowlist filter (Layer 2)
         approved_steps, blocked_steps = filter_plan_steps(steps)
+
+        # 7b. Tier-gate filter — drops active_recon / active_exploit steps
+        # whose required session approval flag is not set. This is the
+        # gate that prevents a kali_sqlmap step from running without the
+        # operator opting in to active_exploit on the session.
+        approved_steps, tier_blocked = filter_by_tier_flags(
+            approved_steps, session.approval_flags or {}
+        )
+        blocked_steps.extend(tier_blocked)
 
         # 8. Risk filter (Layer 3)
         approved_steps, risk_blocked = self._risk_filter.filter_steps(approved_steps)

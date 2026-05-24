@@ -493,6 +493,7 @@ class WorkflowService:
         *,
         session_id: uuid.UUID,
         user: User,
+        approval_flags: dict | None = None,
     ) -> PentestSession:
         session = await self._fetch(session_id)
         _ensure_state(session, _TERMINAL_AFTER_REVIEW)
@@ -511,6 +512,12 @@ class WorkflowService:
         session.status = "approved"
         session.approved_at = now
         session.approved_by = user.id
+        # Persist the operator's tier approval choices alongside the approval
+        # event. The orchestrator's filter_by_tier_flags consumes this dict.
+        if approval_flags is not None:
+            session.approval_flags = {
+                k: bool(v) for k, v in approval_flags.items()
+            }
         # Promote the draft to the canonical plan; execute step is handled by P4 executor.
         session.plan_json = session.draft_plan_json
         await self._db.flush()

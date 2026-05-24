@@ -49,6 +49,13 @@ class PentestSession(Base, UUIDMixin, TimestampMixin):
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    # Per-session tier approval flags (e.g. approved_active_recon,
+    # approved_active_exploit). Consumed by filter_by_tier_flags in the
+    # orchestrator safety chain. Empty dict means no tier gates are open —
+    # any step whose tier requires a flag will be blocked.
+    approval_flags: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
     cost_usd_accum: Mapped[Decimal] = mapped_column(
         Numeric(8, 4), default=Decimal("0"), nullable=False
     )
