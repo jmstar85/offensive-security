@@ -27,7 +27,16 @@ export function useFeatureFlags(): FeatureFlags | null {
           inFlight = null
         })
     }
-    inFlight.then((f) => setFlags(f)).catch(() => setFlags({ osa_flow_ui_enabled: false }))
+    inFlight
+      .then((f) => setFlags(f))
+      .catch(() =>
+        // Safe fallback when the endpoint is unreachable — match the backend
+        // defaults so the UI stays in the conservative state (legacy UI, Kali off).
+        setFlags({
+          osa_flow_ui_enabled: false,
+          osa_kali_backend_enabled: false,
+        }),
+      )
   }, [])
 
   return flags

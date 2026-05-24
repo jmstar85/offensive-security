@@ -19,10 +19,15 @@ router = APIRouter()
 
 @router.get("/config/feature-flags")
 async def get_feature_flags() -> dict[str, bool]:
-    """Return the v4.0 feature-flag set. Public — no auth required so the
-    frontend can fetch it before login (the login page itself reads the
-    flag to decide whether to redirect to /flow/:id after success).
+    """Return the public feature-flag set. No auth required so the login
+    page (and pre-login screens) can branch before authentication.
+
+    - osa_flow_ui_enabled: switches the /flow/:id 2-pane shell on/off
+    - osa_kali_backend_enabled: gates the kali_* tool surface; UI uses it
+      to decide whether to render a "Kali disabled" notice and to hide
+      kali_* options that the backend would also hide
     """
     return {
         "osa_flow_ui_enabled": settings.osa_flow_ui_enabled,
+        "osa_kali_backend_enabled": settings.osa_kali_backend_enabled,
     }
