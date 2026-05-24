@@ -5,6 +5,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { LegacyPageBanner } from "../components/banners/LegacyPageBanner";
 import { getCatalog } from "../api/agents";
+import { useFeatureFlags } from "../hooks/useFeatureFlags";
 
 interface AgentEntry {
   agent_type: string;
@@ -15,6 +16,11 @@ interface AgentEntry {
   options_schema?: object;
   docker_image?: string;
   executable?: boolean;
+  // Backend now also returns these two — surfacing them is critical for
+  // operators to understand the safety profile of a tool before adding it
+  // to a workflow (especially destructive_capable tools like kali_sqlmap).
+  tier?: string;
+  is_destructive_capable?: boolean;
 }
 
 interface CatalogData {
@@ -32,22 +38,38 @@ function riskVariant(level: string): "success" | "warning" | "destructive" | "se
   }
 }
 
+function tierLabel(tier?: string): string {
+  if (!tier) return "";
+  return tier.replace(/_/g, " ");
+}
+
 function AgentCard({ agent }: { agent: AgentEntry }) {
   const navigate = useNavigate();
   const executable = agent.executable !== false;
+  const destructive = agent.is_destructive_capable === true;
 
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base capitalize">{agent.agent_type.replace(/_/g, " ")}</CardTitle>
-          <div className="flex gap-1.5 flex-shrink-0">
+          <div className="flex gap-1.5 flex-shrink-0 flex-wrap justify-end">
             <Badge variant={agent.category === "tool" ? "secondary" : "outline"} className="text-xs">
               {agent.category ?? "domain"}
             </Badge>
             <Badge variant={riskVariant(agent.risk_level)} className="text-xs capitalize">
               {agent.risk_level}
             </Badge>
+            {agent.tier && (
+              <Badge variant="outline" className="text-xs capitalize" title="Required session approval tier">
+                {tierLabel(agent.tier)}
+              </Badge>
+            )}
+            {destructive && (
+              <Badge variant="destructive" className="text-xs" title="Tool can mutate target state — requires explicit operator approval">
+                destructive
+              </Badge>
+            )}
           </div>
         </div>
         {agent.description && (
@@ -85,6 +107,7 @@ export default function AgentCatalog() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "tool" | "domain">("all");
   const [riskFilter, setRiskFilter] = useState<string>("all");
+  const flags = useFeatureFlags();
 
   useEffect(() => {
     getCatalog()
@@ -113,6 +136,18 @@ export default function AgentCatalog() {
         <p className="text-muted-foreground text-sm mt-1">
           Browse available security agents, view capabilities, and add them to your workflows.
         </p>
+        {flags && !flags.osa_kali_backend_enabled && (
+          <div
+            className="mt-3 rounded-md border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-200"
+            role="note"
+          >
+            Kali coexistence is disabled (OSA_KALI_BACKEND_ENABLED=false). The
+            <span className="font-mono"> kali_gobuster</span>,
+            <span className="font-mono"> kali_sqlmap</span>, and
+            <span className="font-mono"> kali_nikto</span> tools are hidden until an
+            operator enables the feature flag.
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
