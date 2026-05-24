@@ -1,8 +1,6 @@
 """PR-8 — metrics registration + audit event schema invariants."""
 from __future__ import annotations
 
-import pytest
-
 from app.observability.metrics import metrics
 from app.safety.audit import KALI_AUDIT_EVENT_SCHEMAS, emit_kali_metric
 from app.safety.kali_allowlist import audit_safety_event
