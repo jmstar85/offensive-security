@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     # Feature flag for new /flow/:id route + 2-pane shell (gated; default OFF until P3-main)
     osa_flow_ui_enabled: bool = False
 
+    # Kali coexistence backend (v1 — default OFF; double-enforced at get_adapter + palette_for_domain)
+    osa_kali_backend_enabled: bool = False
+    # Kali docker socket proxy endpoint (used by KaliBackend only; PR-7 wires this into docker-compose)
+    kali_docker_host: str = "tcp://docker-socket-proxy:2375"
+
     # Performer engine (ADR-003 concurrency model; SF-3 cap)
     performer_max_iter: int = 64
     max_concurrent_performer_sessions: int = 4
