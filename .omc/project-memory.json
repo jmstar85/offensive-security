@@ -203,6 +203,12 @@
       "type": "file"
     },
     {
+      "path": "backend/app/core/config.py",
+      "accessCount": 7,
+      "lastAccessed": 1779621848316,
+      "type": "file"
+    },
+    {
       "path": "frontend/src/api/client.ts",
       "accessCount": 6,
       "lastAccessed": 1778974420938,
@@ -218,12 +224,6 @@
       "path": "backend/app/agents/base.py",
       "accessCount": 6,
       "lastAccessed": 1779612439319,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/core/config.py",
-      "accessCount": 5,
-      "lastAccessed": 1778931935704,
       "type": "file"
     },
     {
