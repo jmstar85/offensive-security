@@ -1,7 +1,6 @@
 """Main orchestrator service — full pipeline from prompt to report."""
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -13,6 +12,11 @@ from app.models.project import Target
 from app.models.session import PentestSession
 from app.orchestrator.executor import PlanExecutor
 from app.orchestrator.planner import AttackPlanner
+from app.orchestrator.workflow_plan import (
+    WorkflowPlanError,
+    normalize_workflow_plan,
+    topologically_sorted_steps,
+)
 from app.reports.generator import ReportGenerator
 from app.safety.audit import AuditLogger
 from app.safety.exploit_allowlist import filter_plan_steps
@@ -94,38 +98,62 @@ class OrchestratorService:
         )
         await self._db.commit()
 
-        await event_bus.publish(str(session_id), {
-            "type": "session_update",
-            "status": "running",
-            "message": "Generating attack plan...",
-        })
-
-        # 5. Generate plan via Claude API
-        await self._audit.log(
-            action="plan_generation_started",
-            actor_id=str(actor_id),
-            target_entity="pentest_session",
-            target_id=str(session_id),
-            details={"prompt": prompt[:500]},
-        )
-        try:
-            plan = await asyncio.get_event_loop().run_in_executor(
-                None, self._planner.create_plan, prompt, target
+        if session.plan_json:
+            await event_bus.publish(str(session_id), {
+                "type": "session_update",
+                "status": "running",
+                "message": "Executing saved workflow...",
+            })
+            try:
+                plan = normalize_workflow_plan(session.plan_json)
+                steps = topologically_sorted_steps(plan)
+            except WorkflowPlanError as exc:
+                await self._fail(session_id, f"Workflow validation failed: {exc}")
+                return
+            await self._audit.log(
+                action="saved_workflow_execution_started",
+                actor_id=str(actor_id),
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"step_count": len(steps)},
             )
-        except Exception as exc:
-            await self._fail(session_id, f"Plan generation failed: {exc}")
-            return
+            await self._db.execute(
+                update(PentestSession)
+                .where(PentestSession.id == session_id)
+                .values(plan_json=plan)
+            )
+            await self._db.commit()
+        else:
+            await event_bus.publish(str(session_id), {
+                "type": "session_update",
+                "status": "running",
+                "message": "Generating attack plan...",
+            })
 
-        # 6. Persist plan
-        await self._db.execute(
-            update(PentestSession)
-            .where(PentestSession.id == session_id)
-            .values(plan_json=plan)
-        )
-        await self._db.commit()
+            # 5. Generate plan via Claude API
+            await self._audit.log(
+                action="plan_generation_started",
+                actor_id=str(actor_id),
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"prompt": prompt[:500]},
+            )
+            try:
+                plan = await self._planner.create_plan(prompt, target)
+            except Exception as exc:
+                await self._fail(session_id, f"Plan generation failed: {exc}")
+                return
+
+            # 6. Persist plan
+            await self._db.execute(
+                update(PentestSession)
+                .where(PentestSession.id == session_id)
+                .values(plan_json=plan)
+            )
+            await self._db.commit()
+            steps = plan.get("steps", [])
 
         # 7. Exploit allowlist filter (Layer 2)
-        steps = plan.get("steps", [])
         approved_steps, blocked_steps = filter_plan_steps(steps)
 
         # 8. Risk filter (Layer 3)

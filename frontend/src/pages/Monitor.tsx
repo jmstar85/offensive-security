@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getSession, killSession, listReports } from '../api/client'
 import { useWebSocket, WsEvent } from '../hooks/useWebSocket'
+import { LegacyPageBanner } from '../components/banners/LegacyPageBanner'
 
 interface AgentCard {
   agent: string
@@ -123,6 +124,7 @@ export default function Monitor() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-6">
+      <LegacyPageBanner pageName="Monitor" />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">

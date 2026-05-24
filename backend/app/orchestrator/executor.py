@@ -1,7 +1,6 @@
 """Plan executor — runs approved steps sequentially, streaming events."""
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -46,12 +45,13 @@ class PlanExecutor:
             await self._db.flush()
             exec_id = execution.id
 
+            # v4.0 P4 gap-fill 3/3 — Tasks tab receives step-lifecycle events.
             await event_bus.publish(str(session_id), {
                 "type": "agent_started",
                 "agent": agent_type,
                 "execution_id": str(exec_id),
                 "step": step.get("order", 0),
-            })
+            }, topic="tasks")
 
             adapter = get_adapter(agent_type)
             container_id_holder: list[str] = []
@@ -75,13 +75,20 @@ class PlanExecutor:
                         if not safe:
                             return all_findings  # session killed
 
-                    # Broadcast to WebSocket subscribers
+                    # v4.0 P4 gap-fill 3/3 — route per-event-type to the
+                    # right panel topic. Logs go to the Terminal tab; status
+                    # / finding / error go to the Agents tab. Legacy
+                    # subscribers (no `topics` filter) still receive all
+                    # events.
+                    event_topic = (
+                        "terminal" if event.event_type == "log" else "agents"
+                    )
                     await event_bus.publish(str(session_id), {
                         "type": event.event_type,
                         "agent": event.agent_type,
                         "execution_id": str(exec_id),
                         "data": event.data,
-                    })
+                    }, topic=event_topic)
 
                     # Collect findings from final status event
                     if event.event_type == "status" and "result" in event.data:
@@ -103,7 +110,7 @@ class PlanExecutor:
                     "agent": agent_type,
                     "execution_id": str(exec_id),
                     "error": str(exc),
-                })
+                }, topic="tasks")
                 continue
 
             all_findings.extend(step_findings)
@@ -121,6 +128,6 @@ class PlanExecutor:
                 "agent": agent_type,
                 "execution_id": str(exec_id),
                 "finding_count": len(step_findings),
-            })
+            }, topic="tasks")
 
         return all_findings

@@ -5,7 +5,6 @@ against the project whitelist. On violation → auto-triggers kill switch.
 """
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import re
 import uuid

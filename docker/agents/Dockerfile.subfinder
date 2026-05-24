@@ -1,0 +1,4 @@
+FROM projectdiscovery/subfinder:latest
+# Subfinder is a passive subdomain enumeration tool. We pin to upstream
+# image; CI tags as osa-agent-subfinder:<version>.
+ENTRYPOINT ["subfinder"]

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"/Users/chrisjung/myproject/offensive-security/.omc/plans/osa-pentagi-port-autopilot-v4.0.md\"}",
+  "error": "File content (34424 tokens) exceeds maximum allowed tokens (25000). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
+  "timestamp": "2026-05-17T11:26:45.958Z",
+  "retry_count": 1
+}

@@ -1,0 +1,28 @@
+# Google search dork templates.
+# Substitute {{DOMAIN}} at emission. Use the search.google.com endpoint
+# via passive_egress_allowlist — never automate beyond the operator's quota.
+templates:
+  exposed_directory_listing:
+    query: 'site:{{DOMAIN}} intitle:"Index of"'
+    description: Open directory listings.
+  exposed_env:
+    query: 'site:{{DOMAIN}} ext:env'
+    description: .env files served by the web server.
+  exposed_logs:
+    query: 'site:{{DOMAIN}} ext:log'
+    description: Log files indexed by Google.
+  exposed_sql_dump:
+    query: 'site:{{DOMAIN}} ext:sql'
+    description: SQL dumps indexed by Google.
+  exposed_backups:
+    query: 'site:{{DOMAIN}} (ext:bak OR ext:backup OR ext:old)'
+    description: Backup files.
+  exposed_git:
+    query: 'site:{{DOMAIN}} inurl:/.git/'
+    description: Exposed .git directories.
+  admin_panels:
+    query: 'site:{{DOMAIN}} (inurl:admin OR inurl:/wp-admin OR inurl:/cpanel)'
+    description: Admin panel paths indexed publicly.
+  login_pages:
+    query: 'site:{{DOMAIN}} intitle:login'
+    description: All indexed login pages on the target.

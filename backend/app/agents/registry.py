@@ -1,27 +1,217 @@
-"""Agent registry — maps agent_type names to adapter classes."""
+"""Agent registry — maps tool slugs to adapter classes plus tier/domain metadata.
+
+Plan v3.2.1 §2.3: replaces the bare slug→class map with a ToolEntry dataclass
+carrying tier, capabilities, applicable_domain_tags, and risk classification.
+Domain-agent palettes are derived via ``palette_for_domain`` (no DB tables).
+
+Existing ``get_adapter`` / ``list_agent_types`` API kept for backward compatibility
+with the legacy orchestrator + tests.
+"""
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Literal
+
 from app.agents.backends.docker import get_docker_backend
-from app.agents.base import AgentAdapter
+from app.agents.base import AgentAdapter, RiskLevel
+from app.agents.cloudenum import CloudEnumAdapter
+from app.agents.dnsx import DnsxAdapter
+from app.agents.httpx_tool import HttpxAdapter
 from app.agents.metasploit import MetasploitAdapter
 from app.agents.nmap import NmapAdapter
 from app.agents.nuclei import NucleiAdapter
+from app.agents.passive_recon import PassiveReconAdapter
 from app.agents.pyrit import PyRITAdapter
+from app.agents.subfinder import SubfinderAdapter
+from app.agents.wappalyzer import WappalyzerAdapter
 
-_ADAPTERS: dict[str, type[AgentAdapter]] = {
-    "nmap": NmapAdapter,
-    "nuclei": NucleiAdapter,
-    "metasploit": MetasploitAdapter,
-    "pyrit": PyRITAdapter,
+Tier = Literal[
+    "passive_no_target_contact",
+    "passive_low_touch",
+    "active_recon",
+    "active_exploit",
+]
+
+
+@dataclass(frozen=True)
+class ToolEntry:
+    slug: str
+    adapter_cls: type[AgentAdapter]
+    docker_image: str
+    tier: Tier
+    capabilities: tuple[str, ...]
+    applicable_domain_tags: frozenset[str]
+    default_risk_band: RiskLevel
+    is_destructive_capable: bool
+
+
+# Domain tag vocabulary (kept aligned with backend/app/agents/domains/__init__.py).
+DOMAIN_TAGS = frozenset({
+    "web", "network", "cloud_aws", "cloud_azure", "cloud_gcp",
+    "mobile", "api", "osint", "email", "ai",
+})
+
+
+_REGISTRY: dict[str, ToolEntry] = {
+    # ── Legacy active tools (existing adapters) ──────────────────────────
+    "nmap": ToolEntry(
+        slug="nmap",
+        adapter_cls=NmapAdapter,
+        docker_image="osa-agent-nmap:latest",
+        tier="active_recon",
+        capabilities=("port_scan", "service_detection", "os_detection"),
+        applicable_domain_tags=frozenset({"network", "web"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "nuclei": ToolEntry(
+        slug="nuclei",
+        adapter_cls=NucleiAdapter,
+        docker_image="osa-agent-nuclei:latest",
+        tier="active_recon",
+        capabilities=("vuln_template_scan",),
+        applicable_domain_tags=frozenset({"web", "api", "network"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "metasploit": ToolEntry(
+        slug="metasploit",
+        adapter_cls=MetasploitAdapter,
+        docker_image="osa-agent-metasploit:latest",
+        tier="active_exploit",
+        capabilities=("auxiliary_scanner", "post_module", "handler"),
+        applicable_domain_tags=frozenset({"network", "web"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+    ),
+    "pyrit": ToolEntry(
+        slug="pyrit",
+        adapter_cls=PyRITAdapter,
+        docker_image="osa-agent-pyrit:latest",
+        tier="active_exploit",
+        capabilities=("ai_red_team",),
+        applicable_domain_tags=frozenset({"ai"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+    ),
+    # ── Passive recon shared image (plan v3.2.1 §2.2) ────────────────────
+    "passive_recon": ToolEntry(
+        slug="passive_recon",
+        adapter_cls=PassiveReconAdapter,
+        docker_image="osa-passive-recon:latest",
+        tier="passive_no_target_contact",
+        capabilities=(
+            "secret_scan",
+            "dns_resolver",
+            "cert_transparency",
+            "mx_spf_dmarc",
+            "robots_sitemap",
+            "well_known",
+            "securitytxt",
+            "cert_chain",
+        ),
+        applicable_domain_tags=frozenset({
+            "osint", "web", "network", "email",
+            "cloud_aws", "cloud_azure", "cloud_gcp",
+        }),
+        default_risk_band=RiskLevel.LOW,
+        is_destructive_capable=False,
+    ),
+    # ── New active-recon Docker tools ────────────────────────────────────
+    "subfinder": ToolEntry(
+        slug="subfinder",
+        adapter_cls=SubfinderAdapter,
+        docker_image="osa-agent-subfinder:latest",
+        tier="active_recon",
+        capabilities=("subdomain_enumeration", "passive_dns"),
+        applicable_domain_tags=frozenset({"web", "osint", "network"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "dnsx": ToolEntry(
+        slug="dnsx",
+        adapter_cls=DnsxAdapter,
+        docker_image="osa-agent-dnsx:latest",
+        tier="active_recon",
+        capabilities=("dns_brute", "dns_resolve", "axfr"),
+        applicable_domain_tags=frozenset({"network", "osint"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "httpx": ToolEntry(
+        slug="httpx",
+        adapter_cls=HttpxAdapter,
+        docker_image="osa-agent-httpx:latest",
+        tier="passive_low_touch",
+        capabilities=("http_status", "title", "tech_detect", "tls_grab"),
+        applicable_domain_tags=frozenset({"web", "api", "cloud_aws", "cloud_azure", "cloud_gcp"}),
+        default_risk_band=RiskLevel.LOW,
+        is_destructive_capable=False,
+    ),
+    "cloudenum": ToolEntry(
+        slug="cloudenum",
+        adapter_cls=CloudEnumAdapter,
+        docker_image="osa-agent-cloudenum:latest",
+        tier="active_recon",
+        capabilities=("s3_buckets", "gcs_buckets", "azure_containers"),
+        applicable_domain_tags=frozenset({"cloud_aws", "cloud_azure", "cloud_gcp"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+    ),
+    "wappalyzer": ToolEntry(
+        slug="wappalyzer",
+        adapter_cls=WappalyzerAdapter,
+        docker_image="osa-agent-wappalyzer:latest",
+        tier="passive_low_touch",
+        capabilities=("tech_fingerprint", "framework_detect"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.LOW,
+        is_destructive_capable=False,
+    ),
 }
 
 
+# ── Public API ──────────────────────────────────────────────────────────────
+
+
 def get_adapter(agent_type: str) -> AgentAdapter:
-    cls = _ADAPTERS.get(agent_type)
-    if not cls:
+    """Return an instantiated adapter for the slug (backward-compatible)."""
+    entry = _REGISTRY.get(agent_type)
+    if not entry:
         raise ValueError(f"Unknown agent type: {agent_type}")
-    return cls(backend=get_docker_backend())
+    return entry.adapter_cls(backend=get_docker_backend())
 
 
 def list_agent_types() -> list[str]:
-    return list(_ADAPTERS.keys())
+    """Return slugs (backward-compatible)."""
+    return list(_REGISTRY.keys())
+
+
+def get_tool_entry(slug: str) -> ToolEntry | None:
+    return _REGISTRY.get(slug)
+
+
+def list_tool_entries() -> list[ToolEntry]:
+    return list(_REGISTRY.values())
+
+
+def palette_for_domain(domain_tags: frozenset[str]) -> list[ToolEntry]:
+    """Return tools whose ``applicable_domain_tags`` intersect ``domain_tags``."""
+    return [t for t in _REGISTRY.values() if t.applicable_domain_tags & domain_tags]
+
+
+def register_tool_entry(entry: ToolEntry) -> None:
+    """Register a new tool (used by P1 active-recon adapters and tests)."""
+    if entry.slug in _REGISTRY:
+        raise ValueError(f"Tool already registered: {entry.slug}")
+    _REGISTRY[entry.slug] = entry
+
+
+def unregister_tool_entry(slug: str) -> None:
+    """Remove a tool slug (test cleanup helper)."""
+    _REGISTRY.pop(slug, None)
+
+
+def get_tier(slug: str) -> Tier | None:
+    entry = _REGISTRY.get(slug)
+    return entry.tier if entry else None

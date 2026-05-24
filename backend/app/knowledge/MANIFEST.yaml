@@ -1,0 +1,39 @@
+dorks:
+  github:
+    path: dorks/github.yaml
+    sha256: 46b974d8456852fd8c56e959ad33b72f2fdac23c8a76f7845be6c5e8d252e78a
+  google:
+    path: dorks/google.yaml
+    sha256: 9e3f8286a5e68759b03da26add5fec0cb038af001c2eb0f29281de3f5a328dca
+  shodan:
+    path: dorks/shodan.yaml
+    sha256: f2e40c88ea94b6209b06e0064fd00e9dcca28545a55d5a667e1f63f910b676e7
+packs:
+  api:
+    path: api/SKILL.md
+    sha256: dcd5e948115fdaeaad16b79cdc7fdca47003acac093636035605c47e502ba6d6
+  cloud_aws:
+    path: cloud_aws/SKILL.md
+    sha256: 948d0a5f6d855e75e793eb98f8e14faadc535dc5f2fe546d52907b897bc03b62
+  cloud_azure:
+    path: cloud_azure/SKILL.md
+    sha256: c9c9faee25a9f5fbbd5ec0f1f64d9e9a457161016b11d3f2d79e8da02ff03847
+  cloud_gcp:
+    path: cloud_gcp/SKILL.md
+    sha256: 85bc06bd4c360aba49bdda642511ce54578058aba2187751e5875857b1a814a7
+  methodology:
+    path: methodology/SKILL.md
+    sha256: a46e06b11652e6847b8e906073b5b2403db522db34f81507d8076da4e7e7f2d6
+  mobile:
+    path: mobile/SKILL.md
+    sha256: eaebaf720205e971df50678b247694cbc4db65a7f1d1a6020a8d498ee99da587
+  network:
+    path: network/SKILL.md
+    sha256: aad45b40d20ad26710d6309a9aa9841e1ac5519b55accea6996e5767f169daab
+  osint:
+    path: osint/SKILL.md
+    sha256: a422982f05ed96920b4eab89c0a6a1778b2a263b231f79c173f825579d6c3497
+  web:
+    path: web/SKILL.md
+    sha256: 58f0508d5191569c1ece6bee27466ff09df5a6069e026012cec365520889aac4
+

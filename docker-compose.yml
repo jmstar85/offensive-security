@@ -26,6 +26,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEBUG: "true"
+      # v4.0 PentAGI port — activates the new /flow/:id 2-pane shell + tabs
+      # and the DeprecationBanner on Monitor/PentestWorkflow/AgentCatalog.
+      # Default in code is False; this override enables the new UI.
+      OSA_FLOW_UI_ENABLED: "true"
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock

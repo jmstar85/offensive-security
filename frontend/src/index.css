@@ -2,6 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-950 text-gray-100;
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 0 72% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 210 40% 90%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 86%;
+    --input: 214 32% 90%;
+    --ring: 0 72% 51%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 15%;
+    --card-foreground: 210 40% 98%;
+    --primary: 0 72% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 22%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 33% 25%;
+    --input: 217 33% 22%;
+    --ring: 0 72% 51%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    @apply bg-background text-foreground min-h-screen;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  html:not(.dark) .bg-gray-950 {
+    background-color: hsl(var(--background));
+  }
+
+  html:not(.dark) .bg-gray-900 {
+    background-color: hsl(var(--card));
+  }
+
+  html:not(.dark) .bg-gray-800,
+  html:not(.dark) .bg-gray-700 {
+    background-color: hsl(var(--secondary));
+  }
+
+  html:not(.dark) .border-gray-900,
+  html:not(.dark) .border-gray-800,
+  html:not(.dark) .border-gray-700 {
+    border-color: hsl(var(--border));
+  }
+
+  html:not(.dark) .text-gray-200,
+  html:not(.dark) .text-gray-300 {
+    color: hsl(var(--foreground));
+  }
+
+  html:not(.dark) .text-gray-400,
+  html:not(.dark) .text-gray-500,
+  html:not(.dark) .text-gray-600 {
+    color: hsl(var(--muted-foreground));
+  }
+
+  html:not(.dark) .bg-gray-800.text-white,
+  html:not(.dark) .bg-gray-700.text-white {
+    color: hsl(var(--foreground));
+  }
+}
+
+/* React Flow dark theme */
+.react-flow__node {
+  @apply bg-card border border-border rounded-lg text-foreground text-xs font-medium;
+}
+.react-flow__edge-path {
+  stroke: hsl(var(--border));
+  stroke-width: 2;
+}
+.react-flow__controls {
+  @apply bg-card border border-border rounded-lg;
+}
+.react-flow__controls-button {
+  @apply text-foreground border-border hover:bg-accent;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.react-flow__minimap {
+  @apply bg-card border border-border rounded-lg;
+}
+.react-flow__background {
+  background-color: hsl(var(--background));
 }

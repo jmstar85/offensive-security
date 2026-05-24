@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from app.agents.base import AgentAdapter, AgentResult, ExecutionBackend, RiskLevel
+from app.agents.base import AgentAdapter, AgentResult, RiskLevel
 
 
 class NmapAdapter(AgentAdapter):

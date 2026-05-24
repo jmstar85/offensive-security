@@ -9,11 +9,11 @@ Tests:
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from app.agents.base import AgentAdapter, AgentEvent, AgentResult, RiskLevel
+from app.agents.base import AgentResult, RiskLevel
 from app.agents.nmap import NmapAdapter
 from app.agents.nuclei import NucleiAdapter
 from app.agents.metasploit import MetasploitAdapter
@@ -188,7 +188,7 @@ class TestAgentAdapterExecuteFlow:
 class TestAgentRegistry:
     def test_get_known_agents(self):
         from unittest.mock import patch
-        from app.agents.registry import get_adapter, list_agent_types
+        from app.agents.registry import get_adapter
 
         mock_backend = MagicMock()
         with patch("app.agents.registry.get_docker_backend", return_value=mock_backend):
@@ -205,6 +205,7 @@ class TestAgentRegistry:
                 get_adapter("unknown_tool")
 
     def test_list_agent_types(self):
+        """Legacy agent slugs must still be registered (plan v3.2.1 extends, not replaces)."""
         from app.agents.registry import list_agent_types
-        types = list_agent_types()
-        assert set(types) == {"nmap", "nuclei", "metasploit", "pyrit"}
+        types = set(list_agent_types())
+        assert {"nmap", "nuclei", "metasploit", "pyrit"} <= types

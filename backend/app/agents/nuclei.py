@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import json
-import re
 
-from app.agents.base import AgentAdapter, AgentResult, ExecutionBackend, RiskLevel
+from app.agents.base import AgentAdapter, AgentResult, RiskLevel
 
 # Severity mapping to numeric risk score (CVSS-ish)
 _SEVERITY_SCORE = {"critical": 9.0, "high": 7.0, "medium": 5.0, "low": 3.0, "info": 1.0}

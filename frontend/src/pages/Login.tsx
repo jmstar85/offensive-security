@@ -1,9 +1,24 @@
+/**
+ * Login page — v4.0 PentAGI-style 2-pane shell.
+ *
+ * Left: 350px credential form. Right: branded gradient panel with the
+ * slow-rotating OSA mark (favicon.svg) — same icon used in the sidebar
+ * post-login so the brand stays consistent across the auth boundary.
+ * Top-right corner carries a light/dark theme toggle so the choice can be
+ * made before any other navigation happens.
+ */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Loader2, Moon, Sun } from 'lucide-react'
+
 import { login } from '../api/client'
+import { useTheme } from '../lib/theme'
 
 export default function Login() {
   const navigate = useNavigate()
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,45 +33,108 @@ export default function Login() {
       localStorage.setItem('token', res.data.access_token)
       navigate('/')
     } catch {
-      setError('Invalid credentials')
+      setError('Invalid login or password')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="w-full max-w-md bg-gray-900 rounded-xl shadow-2xl p-8 border border-gray-800">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-red-500">OSA Platform</h1>
-          <p className="text-gray-400 mt-1">Offensive Security Agent</p>
+    <div className="relative h-dvh w-full lg:grid lg:grid-cols-2 bg-background text-foreground">
+      {/* ── Theme toggle (absolute top-right of the page) ── */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+        className="absolute top-4 right-4 z-10 inline-flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background/60 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        data-testid="login-theme-toggle"
+      >
+        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </button>
+
+      {/* ── Left column — credential form (centered card, 350px wide) ── */}
+      <div className="flex items-center justify-center p-6">
+        <div className="mx-auto grid w-[350px] gap-8">
+          <header className="space-y-1 text-center">
+            <h1 className="text-3xl font-bold tracking-tight">OSA Platform</h1>
+            <p className="text-sm text-muted-foreground">
+              Offensive Security Agent — sign in to continue
+            </p>
+          </header>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="login-email"
+                className="text-sm font-medium leading-none"
+              >
+                Login
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                autoFocus
+                required
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="login-password"
+                className="text-sm font-medium leading-none"
+              >
+                Password
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 h-9 w-full rounded-md bg-primary text-primary-foreground text-sm font-medium shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+              data-testid="login-submit"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>{loading ? 'Signing in…' : 'Sign in'}</span>
+            </button>
+
+            {error && (
+              <p
+                role="alert"
+                className="text-sm text-destructive font-medium text-center"
+              >
+                {error}
+              </p>
+            )}
+          </form>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Email</label>
-            <input
-              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Password</label>
-            <input
-              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500"
-              required
-            />
-          </div>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button
-            type="submit" disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 transition disabled:opacity-50"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
       </div>
+
+      {/* ── Right column — brand panel with slow-spinning favicon mark ── */}
+      <aside
+        aria-hidden="true"
+        className="hidden lg:flex relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background"
+      >
+        <div className="m-auto flex items-center justify-center">
+          <img
+            src="/favicon.svg"
+            alt=""
+            className="w-40 h-40 animate-logo-spin drop-shadow-[0_0_24px_hsl(var(--primary)/0.4)]"
+          />
+        </div>
+      </aside>
     </div>
   )
 }

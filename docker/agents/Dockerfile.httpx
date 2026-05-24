@@ -1,0 +1,4 @@
+FROM projectdiscovery/httpx:latest
+# httpx in our taxonomy is tier=passive_low_touch (HTTP GET only with
+# restricted flag set enforced by the adapter, never raw fuzzing).
+ENTRYPOINT ["httpx"]

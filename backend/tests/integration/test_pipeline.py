@@ -87,11 +87,15 @@ class TestSafetyChainIntegration:
 # ── Plan generation mock integration ─────────────────────────────────────────
 
 class TestPlannerIntegration:
-    """Test AttackPlanner with a mocked Claude API response."""
+    """Test AttackPlanner with a mocked ModelClient (plan v3.2.1 §1.2)."""
 
-    def test_planner_parses_valid_json_plan(self):
+    @pytest.mark.asyncio
+    async def test_planner_parses_valid_json_plan(self):
         import json
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import AsyncMock
+
+        from app.orchestrator.model_client import Response
+        from app.orchestrator.planner import AttackPlanner
 
         mock_plan = {
             "target_summary": "Test target at 192.168.1.0/24",
@@ -104,49 +108,44 @@ class TestPlannerIntegration:
             ],
         }
 
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=json.dumps(mock_plan))]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_message
-
-        with patch("app.orchestrator.planner.anthropic.Anthropic", return_value=mock_client), \
-             patch("app.core.config.settings") as mock_settings:
-            mock_settings.anthropic_api_key = "test-key"
-            mock_settings.anthropic_model = "claude-3-5-sonnet"
-
-            from app.orchestrator.planner import AttackPlanner
-            planner = AttackPlanner()
-            planner._client = mock_client
-
-            plan = planner.create_plan(
-                "Scan 192.168.1.0/24",
-                {"ip_ranges": ["192.168.1.0/24"], "domains": []}
+        mock_client = AsyncMock()
+        mock_client.send = AsyncMock(
+            return_value=Response(
+                text=json.dumps(mock_plan),
+                tokens_in=100,
+                tokens_out=200,
+                raw=None,
             )
+        )
+        planner = AttackPlanner(model_client=mock_client)
+
+        plan = await planner.create_plan(
+            "Scan 192.168.1.0/24",
+            {"ip_ranges": ["192.168.1.0/24"], "domains": []},
+        )
 
         assert plan["risk_level"] == "low"
         assert len(plan["steps"]) == 2
         assert plan["steps"][0]["agent"] == "nmap"
+        mock_client.send.assert_awaited_once()
 
-    def test_planner_strips_markdown_fences(self):
+    @pytest.mark.asyncio
+    async def test_planner_strips_markdown_fences(self):
         import json
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import AsyncMock
+
+        from app.orchestrator.model_client import Response
+        from app.orchestrator.planner import AttackPlanner
 
         mock_plan = {"target_summary": "test", "risk_level": "low", "steps": []}
         fenced = f"```json\n{json.dumps(mock_plan)}\n```"
 
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=fenced)]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_message
-
-        with patch("app.orchestrator.planner.anthropic.Anthropic", return_value=mock_client), \
-             patch("app.core.config.settings") as mock_settings:
-            mock_settings.anthropic_api_key = "test-key"
-            mock_settings.anthropic_model = "claude-3-5-sonnet"
-            from app.orchestrator.planner import AttackPlanner
-            planner = AttackPlanner()
-            planner._client = mock_client
-            plan = planner.create_plan("test", {"ip_ranges": [], "domains": []})
+        mock_client = AsyncMock()
+        mock_client.send = AsyncMock(
+            return_value=Response(text=fenced, tokens_in=10, tokens_out=20, raw=None)
+        )
+        planner = AttackPlanner(model_client=mock_client)
+        plan = await planner.create_plan("test", {"ip_ranges": [], "domains": []})
 
         assert plan["risk_level"] == "low"
 
@@ -156,7 +155,7 @@ class TestPlannerIntegration:
 class TestReportGeneratorIntegration:
     @pytest.mark.asyncio
     async def test_generate_report_with_findings(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
         from app.reports.generator import ReportGenerator
 
         mock_db = MagicMock()

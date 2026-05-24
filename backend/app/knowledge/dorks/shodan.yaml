@@ -1,0 +1,33 @@
+# Shodan query templates. Substitute {{ORG}}, {{DOMAIN}}, or {{ASN}} as needed.
+# All queries go through the operator's Shodan API key via passive_egress_allowlist.
+templates:
+  org_assets:
+    query: 'org:"{{ORG}}"'
+    description: All Shodan-indexed assets owned by the org name.
+  asn_assets:
+    query: 'asn:{{ASN}}'
+    description: All hosts in the target ASN.
+  hostname_filter:
+    query: 'hostname:{{DOMAIN}}'
+    description: Hosts whose reverse DNS matches the domain.
+  exposed_kibana:
+    query: 'product:Kibana hostname:{{DOMAIN}}'
+    description: Public Kibana instances on the target.
+  exposed_elasticsearch:
+    query: 'product:Elastic hostname:{{DOMAIN}}'
+    description: Public Elasticsearch.
+  exposed_redis:
+    query: 'product:Redis hostname:{{DOMAIN}}'
+    description: Public Redis without auth (high finding when present).
+  exposed_mongodb:
+    query: 'product:MongoDB hostname:{{DOMAIN}}'
+    description: Public MongoDB.
+  exposed_jenkins:
+    query: 'product:Jenkins hostname:{{DOMAIN}}'
+    description: Public Jenkins, often unauthenticated /script.
+  exposed_docker_registry:
+    query: 'product:"Docker Registry" hostname:{{DOMAIN}}'
+    description: Public Docker registries.
+  exposed_etcd:
+    query: 'product:etcd hostname:{{DOMAIN}}'
+    description: Public etcd; almost always a major finding.
