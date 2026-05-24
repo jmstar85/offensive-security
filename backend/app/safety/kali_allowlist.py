@@ -284,6 +284,9 @@ def verify_kali_args(
                 block(f"unknown_flag:{flag}")
             if embedded is not None:
                 value: str = embedded
+                pv2 = _path_violation(value)
+                if pv2 is not None:
+                    block(pv2)
             elif flag in value_flags:
                 if i + 1 >= len(args):
                     block(f"missing_value_for:{flag}")
