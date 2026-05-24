@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.domains import list_domain_agents
 from app.agents.registry import get_tool_entry, list_tool_entries
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
 
@@ -99,13 +100,31 @@ _TEMPLATES = [
 ]
 
 
+def _is_visible_tool(entry) -> bool:
+    """Hide kali_* tools from the catalog when OSA_KALI_BACKEND_ENABLED is off.
+
+    The orchestrator already raises KaliBackendDisabledError at execution
+    time, but surfacing kali_* in the catalog when the flag is off would
+    invite users to build workflows that fail later. palette_for_domain
+    applies the same filter at the planner side; this keeps the two
+    catalog surfaces consistent.
+    """
+    if entry.slug.startswith("kali_") and not settings.osa_kali_backend_enabled:
+        return False
+    return True
+
+
 @router.get("/catalog")
 async def get_catalog(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return {
-        "tool_agents": [_tool_meta(entry) for entry in list_tool_entries()],
+        "tool_agents": [
+            _tool_meta(entry)
+            for entry in list_tool_entries()
+            if _is_visible_tool(entry)
+        ],
         "domain_agents": [_domain_meta(agent) for agent in list_domain_agents()],
     }
 
@@ -117,7 +136,7 @@ async def get_catalog_agent(
     db: AsyncSession = Depends(get_db),
 ):
     tool = get_tool_entry(agent_type)
-    if tool:
+    if tool and _is_visible_tool(tool):
         return _tool_meta(tool)
     for agent in list_domain_agents():
         if agent.slug == agent_type:
