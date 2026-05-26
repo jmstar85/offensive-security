@@ -70,7 +70,10 @@ services:
   # body inspection is layered on top by kali-socket-proxy-filter (PR-7
   # split: tecnativa enforces verb+path, our middleware enforces body).
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.3.0
+    # Digest pin (architect P1 + plan A2.5/R8): a security-critical proxy
+    # must never float on a mutable tag. The digest below is the one the
+    # current 0.3.0 release publishes; refresh via the quarterly workflow.
+    image: tecnativa/docker-socket-proxy@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
     environment:
       CONTAINERS: 1
       POST: 1
