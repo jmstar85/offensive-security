@@ -15,6 +15,12 @@ router = APIRouter()
 
 
 def _tool_meta(entry) -> dict:
+    # Description preference order: explicit ToolEntry.description (set on
+    # every entry; registration test fails if blank) → derived summary from
+    # capabilities as a safety-net for late additions that forget the field.
+    description = entry.description or (
+        " / ".join(c.replace("_", " ") for c in entry.capabilities[:3]).capitalize()
+    )
     return {
         "agent_type": entry.slug,
         "docker_image": entry.docker_image,
@@ -25,6 +31,7 @@ def _tool_meta(entry) -> dict:
         "tier": entry.tier,
         "executable": True,
         "is_destructive_capable": entry.is_destructive_capable,
+        "description": description,
     }
 
 

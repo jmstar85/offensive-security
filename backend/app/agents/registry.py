@@ -60,6 +60,10 @@ class ToolEntry:
     applicable_domain_tags: frozenset[str]
     default_risk_band: RiskLevel
     is_destructive_capable: bool
+    # One-line operator-facing summary. Surfaced through /agents/catalog so
+    # the AgentCatalog cards stop rendering an empty description block.
+    # New entries SHOULD set this; the registration tests fail if left blank.
+    description: str = ""
 
 
 # Domain tag vocabulary (kept aligned with backend/app/agents/domains/__init__.py).
@@ -80,6 +84,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"network", "web"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="Port scanner with service / OS fingerprinting.",
     ),
     "nuclei": ToolEntry(
         slug="nuclei",
@@ -90,6 +95,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api", "network"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="YAML-template driven vulnerability scanner.",
     ),
     "metasploit": ToolEntry(
         slug="metasploit",
@@ -100,6 +106,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"network", "web"}),
         default_risk_band=RiskLevel.HIGH,
         is_destructive_capable=True,
+        description="Approved auxiliary / post / handler module runner.",
     ),
     "pyrit": ToolEntry(
         slug="pyrit",
@@ -110,6 +117,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"ai"}),
         default_risk_band=RiskLevel.HIGH,
         is_destructive_capable=True,
+        description="AI red-team / LLM jailbreak probe harness.",
     ),
     # ── Passive recon shared image (plan v3.2.1 §2.2) ────────────────────
     "passive_recon": ToolEntry(
@@ -133,6 +141,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         }),
         default_risk_band=RiskLevel.LOW,
         is_destructive_capable=False,
+        description="DNS / cert / robots-txt / secret OSINT — no target contact.",
     ),
     # ── New active-recon Docker tools ────────────────────────────────────
     "subfinder": ToolEntry(
@@ -144,6 +153,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "osint", "network"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="Passive subdomain enumeration via public sources.",
     ),
     "dnsx": ToolEntry(
         slug="dnsx",
@@ -154,6 +164,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"network", "osint"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="DNS resolve / brute-force / AXFR probe.",
     ),
     "httpx": ToolEntry(
         slug="httpx",
@@ -164,6 +175,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api", "cloud_aws", "cloud_azure", "cloud_gcp"}),
         default_risk_band=RiskLevel.LOW,
         is_destructive_capable=False,
+        description="HTTP probe — status / title / tech / TLS metadata.",
     ),
     "cloudenum": ToolEntry(
         slug="cloudenum",
@@ -174,6 +186,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"cloud_aws", "cloud_azure", "cloud_gcp"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="Public S3 / GCS / Azure container enumeration.",
     ),
     "wappalyzer": ToolEntry(
         slug="wappalyzer",
@@ -184,6 +197,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api"}),
         default_risk_band=RiskLevel.LOW,
         is_destructive_capable=False,
+        description="Web technology fingerprinting from HTTP responses.",
     ),
     # ── Kali coexistence (PR-5; digest pin lands in PR-6 via env) ────────
     "kali_gobuster": ToolEntry(
@@ -195,6 +209,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="Gobuster: directory / DNS / vhost brute-force (Kali).",
     ),
     "kali_sqlmap": ToolEntry(
         slug="kali_sqlmap",
@@ -205,6 +220,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api"}),
         default_risk_band=RiskLevel.HIGH,
         is_destructive_capable=True,
+        description="sqlmap: SQL injection detection and exploitation (Kali).",
     ),
     "kali_nikto": ToolEntry(
         slug="kali_nikto",
@@ -215,6 +231,7 @@ _REGISTRY: dict[str, ToolEntry] = {
         applicable_domain_tags=frozenset({"web", "api"}),
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
+        description="Nikto: web-server misconfiguration scanner (Kali).",
     ),
 }
 
