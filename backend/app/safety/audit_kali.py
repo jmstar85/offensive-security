@@ -22,6 +22,7 @@ from app.safety.audit import AuditLogger
 
 ACTION_FILTER_PLAN = "kali_exec.filter_plan_steps_block"
 ACTION_TIER_GATE = "kali_exec.tier_gate_block"
+ACTION_SHIM_BLOCK = "kali_exec.shim_block"
 
 
 def _is_kali(step: dict) -> bool:
@@ -36,6 +37,36 @@ def _details(step: dict) -> dict:
         "tier": step.get("tier"),
         "block_reason": step.get("block_reason"),
     }
+
+
+async def persist_kali_shim_block(
+    audit: AuditLogger,
+    *,
+    session_id: uuid.UUID,
+    actor_id: str,
+    agent: str,
+    tool_slug: str | None,
+    reason: str,
+) -> None:
+    """Record a call-time WhitelistShim rejection in the audit_logs table.
+
+    Companion to ``audit_safety_event("kali_exec.shim_block", ...)``: that
+    function logs to stdout and bumps a Prometheus counter, but only this
+    DB row makes the rejection visible to operators in /audit-logs.
+    Called from PlanExecutor when KaliExecAdapter.build_command raises
+    SafetyViolation.
+    """
+    await audit.log(
+        action=ACTION_SHIM_BLOCK,
+        actor_id=actor_id,
+        target_entity="pentest_session",
+        target_id=str(session_id),
+        details={
+            "agent": agent,
+            "tool_slug": tool_slug,
+            "reason": reason,
+        },
+    )
 
 
 async def persist_kali_blocked_steps(

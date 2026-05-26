@@ -13,8 +13,10 @@ import pytest
 
 from app.safety.audit_kali import (
     ACTION_FILTER_PLAN,
+    ACTION_SHIM_BLOCK,
     ACTION_TIER_GATE,
     persist_kali_blocked_steps,
+    persist_kali_shim_block,
 )
 
 
@@ -133,6 +135,36 @@ async def test_details_payload_shape_is_stable():
     )
     details = audit.log.await_args_list[0].kwargs["details"]
     assert set(details.keys()) == {"agent", "tool_slug", "tier", "block_reason"}
+
+
+@pytest.mark.asyncio
+async def test_shim_block_persists_one_row_with_expected_shape():
+    audit = AsyncMock()
+    await persist_kali_shim_block(
+        audit,
+        session_id=SESSION_ID,
+        actor_id=ACTOR_ID,
+        agent="kali_sqlmap",
+        tool_slug="sqlmap",
+        reason="deny_flag:--os-shell",
+    )
+    audit.log.assert_awaited_once()
+    call = audit.log.await_args
+    assert call.kwargs["action"] == ACTION_SHIM_BLOCK
+    assert call.kwargs["target_entity"] == "pentest_session"
+    assert call.kwargs["target_id"] == str(SESSION_ID)
+    details = call.kwargs["details"]
+    assert details == {
+        "agent": "kali_sqlmap",
+        "tool_slug": "sqlmap",
+        "reason": "deny_flag:--os-shell",
+    }
+
+
+@pytest.mark.asyncio
+async def test_shim_block_action_string_constant():
+    # Pin the action label so downstream dashboards / alerts can rely on it.
+    assert ACTION_SHIM_BLOCK == "kali_exec.shim_block"
 
 
 @pytest.mark.asyncio

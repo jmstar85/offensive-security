@@ -7,15 +7,19 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.kali_whitelist import SafetyViolation
 from app.agents.registry import get_adapter
 from app.core.events import event_bus
 from app.models.session import AgentExecution
+from app.safety.audit import AuditLogger
+from app.safety.audit_kali import persist_kali_shim_block
 from app.safety.egress_monitor import EgressMonitor
 
 
 class PlanExecutor:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+        self._audit = AuditLogger(db)
 
     async def execute(
         self,
@@ -95,6 +99,37 @@ class PlanExecutor:
                         result = event.data["result"]
                         step_findings = result.get("findings", [])
 
+            except SafetyViolation as exc:
+                # WhitelistShim rejected the (slug, args) pair at build_command
+                # time. Persist the per-step row to audit_logs so operators
+                # can see it in /audit-logs — the Python-logging + Prometheus
+                # emission inside kali_allowlist alone is not UI-visible.
+                if agent_type.startswith("kali_"):
+                    await persist_kali_shim_block(
+                        self._audit,
+                        session_id=session_id,
+                        actor_id=actor_id,
+                        agent=agent_type,
+                        tool_slug=config.get("tool_slug"),
+                        reason=str(exc),
+                    )
+                await self._db.execute(
+                    update(AgentExecution)
+                    .where(AgentExecution.id == exec_id)
+                    .values(
+                        status="failed",
+                        ended_at=datetime.now(timezone.utc),
+                        output_json={"error": str(exc), "reason": "shim_block"},
+                    )
+                )
+                await event_bus.publish(str(session_id), {
+                    "type": "agent_failed",
+                    "agent": agent_type,
+                    "execution_id": str(exec_id),
+                    "error": str(exc),
+                    "reason": "shim_block",
+                }, topic="tasks")
+                continue
             except Exception as exc:
                 await self._db.execute(
                     update(AgentExecution)
