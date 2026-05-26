@@ -20,6 +20,7 @@ from app.orchestrator.workflow_plan import (
 from app.reports.generator import ReportGenerator
 from app.agents.registry import get_tool_entry
 from app.safety.audit import AuditLogger
+from app.safety.audit_kali import persist_kali_blocked_steps
 from app.safety.exploit_allowlist import filter_by_tier_flags, filter_plan_steps
 from app.safety.risk_filter import RiskFilter
 from app.safety.whitelist import WhitelistValidator
@@ -164,7 +165,7 @@ class OrchestratorService:
                 step["tier"] = entry.tier
 
         # 7. Exploit allowlist filter (Layer 2)
-        approved_steps, blocked_steps = filter_plan_steps(steps)
+        approved_steps, plan_blocked = filter_plan_steps(steps)
 
         # 7b. Tier-gate filter — drops active_recon / active_exploit steps
         # whose required session approval flag is not set. This is the
@@ -173,11 +174,22 @@ class OrchestratorService:
         approved_steps, tier_blocked = filter_by_tier_flags(
             approved_steps, session.approval_flags or {}
         )
-        blocked_steps.extend(tier_blocked)
+
+        # 7c. Per-step DB-persisted audit rows for kali_* blocks (fix #D).
+        # Runs before the summary 'steps_blocked' row so granular per-slug
+        # records are queryable in /audit-logs. Non-kali blocks are
+        # intentionally only summarised, not exploded.
+        await persist_kali_blocked_steps(
+            self._audit,
+            session_id=session_id,
+            actor_id=str(actor_id),
+            plan_blocked=plan_blocked,
+            tier_blocked=tier_blocked,
+        )
 
         # 8. Risk filter (Layer 3)
         approved_steps, risk_blocked = self._risk_filter.filter_steps(approved_steps)
-        blocked_steps.extend(risk_blocked)
+        blocked_steps = list(plan_blocked) + list(tier_blocked) + list(risk_blocked)
 
         if blocked_steps:
             await self._audit.log(
