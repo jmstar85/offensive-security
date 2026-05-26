@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd backend && .venv/bin/python -m ruff check app/agents/kali_exec.py app/agents/kali_whitelist.py app/agents/backends/kali.py app/safety/kali_allowlist.py tests/unit/test_kali_allowlist_si...",
+  "tool_input_preview": "{\"command\":\"cd backend && .venv/bin/python -m pytest tests/unit/ tests/integration/test_pipeline.py tests/integration/test_kali_socket_proxy.py tests/e2e/ -q --ignore=tests/unit/test_planner_v2.py 2>&...",
   "error": "Exit code 1\n(eval):cd:1: no such file or directory: backend",
-  "timestamp": "2026-05-24T11:29:22.987Z",
+  "timestamp": "2026-05-24T14:33:51.046Z",
   "retry_count": 1
 }

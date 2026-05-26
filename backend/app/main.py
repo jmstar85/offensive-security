@@ -122,8 +122,9 @@ app.include_router(
     tags=["feature-flags"],
 )
 
-# WebSocket
-app.include_router(ws.router, tags=["websocket"])
+# WebSocket — mounted under the same /api/v1 prefix as REST so the
+# external path is /api/v1/ws/sessions/{id} (matches the frontend client).
+app.include_router(ws.router, prefix=settings.api_prefix, tags=["websocket"])
 
 
 @app.get("/health")

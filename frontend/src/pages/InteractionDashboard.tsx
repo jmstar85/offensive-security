@@ -68,7 +68,13 @@ export default function InteractionDashboard() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/v1/ws/${sessionId}`;
+    // Backend mounts the WS router under /api/v1; the handshake requires a
+    // valid JWT as ?token=… AND that the session_id belongs to the caller's
+    // team (or that the caller is an admin) — see backend/app/api/v1/ws.py.
+    const token = localStorage.getItem("token") || "";
+    const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${
+      window.location.host
+    }/api/v1/ws/sessions/${sessionId}?token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
