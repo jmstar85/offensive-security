@@ -52,7 +52,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: ["uvicorn", "app.infra.socket_proxy_filter:create_app",
+    # uvicorn --factory requires a zero-arg callable; create_app keeps the
+    # upstream_url argument explicit for unit tests, so we target the env-
+    # driven wrapper env_app_factory which reads SOCKET_PROXY_UPSTREAM.
+    command: ["uvicorn", "app.infra.socket_proxy_filter:env_app_factory",
               "--factory", "--host", "0.0.0.0", "--port", "2375",
               "--app-dir", "/app"]
     environment:

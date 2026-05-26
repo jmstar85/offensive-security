@@ -17,6 +17,7 @@ The validator is the unit-tested surface; the FastAPI app is integration-
 tested against an ASGI httpx client with a mocked upstream.
 """
 import json
+import os
 import re
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
@@ -119,3 +120,17 @@ PROXY_ALLOWED_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("GET",  "/containers/{id}/logs"),
     ("DELETE", "/containers/{id}"),
 )
+
+
+def env_app_factory() -> FastAPI:
+    """uvicorn --factory entry-point.
+
+    Reads the upstream proxy URL from SOCKET_PROXY_UPSTREAM (compose injects
+    it pointing at tecnativa/docker-socket-proxy). create_app keeps the
+    upstream argument explicit for unit-testability; this thin wrapper makes
+    it usable with `uvicorn --factory` which requires a zero-arg callable.
+    """
+    upstream = os.environ.get(
+        "SOCKET_PROXY_UPSTREAM", "http://docker-socket-proxy:2375"
+    )
+    return create_app(upstream)
