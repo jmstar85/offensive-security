@@ -135,6 +135,22 @@ def compare_audit_log_rows(
         e_tid = _normalise_uuid(str(e_row.get("target_id", "")))
         if a_tid != e_tid:
             diffs.append(f"{prefix}.target_id: {a_tid!r} != {e_tid!r}")
+        # Top-level timestamp drift check (was missing; surfaced by W0/PR0.5
+        # test_comparator_detects_timestamp_drift_within_tolerance). Compare
+        # using the same ±tolerance_ms window applied inside details_json.
+        a_ts = a_row.get("timestamp")
+        e_ts = e_row.get("timestamp")
+        if isinstance(a_ts, str) and isinstance(e_ts, str):
+            a_dt = _parse_iso(a_ts)
+            e_dt = _parse_iso(e_ts)
+            if a_dt is not None and e_dt is not None:
+                drift_ms = abs((a_dt - e_dt).total_seconds() * 1000)
+                if drift_ms > tolerance_ms:
+                    diffs.append(
+                        f"{prefix}.timestamp: drift {drift_ms:.1f}ms > tolerance {tolerance_ms}ms"
+                    )
+            elif a_ts != e_ts:
+                diffs.append(f"{prefix}.timestamp: {a_ts!r} != {e_ts!r}")
         a_details = a_row.get("details_json", {})
         e_details = e_row.get("details_json", {})
         if isinstance(a_details, str):
