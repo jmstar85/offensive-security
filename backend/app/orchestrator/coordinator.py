@@ -36,6 +36,17 @@ class ReplayLaneViolation(Exception):
     """Raised when CoordinatorService is invoked on a non-eligible lane."""
 
 
+class IterationCapHit(Exception):
+    """Raised by run_with_iteration_cap when one of the caps trips."""
+
+    def __init__(self, reason: str, *, iterations: int, wall_clock_s: float, tokens: int):
+        super().__init__(reason)
+        self.reason = reason
+        self.iterations = iterations
+        self.wall_clock_s = wall_clock_s
+        self.tokens = tokens
+
+
 class UnderstandingBuilder:
     async def build(self, prompt: str, target: dict) -> UnderstandingOfTarget:
         domains: list[str] = target.get("domains", [])
@@ -209,3 +220,88 @@ class CoordinatorService:
             return True
 
         return False
+
+    async def run_with_iteration_cap(
+        self,
+        *,
+        session_id,
+        prompt,
+        target,
+        actor_id,
+        lane,
+        replay_opt_in=False,
+        token_counter_fn=None,
+        clock_fn=None,
+    ):
+        """Iterate Coordinator.run up to settings caps, monotonically bumping iteration_no.
+
+        Args:
+          token_counter_fn: callable returning total tokens consumed so far (default: lambda: 0)
+          clock_fn: callable returning current monotonic wall-clock seconds (default: time.monotonic)
+
+        Raises:
+          IterationCapHit on first cap trip. Persists session.status='failed'
+          via audit before raising. Calling code may catch and react.
+        """
+        import time
+        from app.core.config import settings
+        token_counter_fn = token_counter_fn or (lambda: 0)
+        clock_fn = clock_fn or time.monotonic
+
+        start = clock_fn()
+        iteration_no = 0
+        last_understanding = None
+        last_plan_of_work = None
+
+        while True:
+            iteration_no += 1
+            if iteration_no > settings.max_coordinator_iterations:
+                await self._audit_cap_hit(session_id, actor_id, "max_iterations",
+                    iteration_no - 1, clock_fn() - start, token_counter_fn())
+                raise IterationCapHit("max_iterations",
+                    iterations=iteration_no - 1,
+                    wall_clock_s=clock_fn() - start,
+                    tokens=token_counter_fn())
+
+            elapsed = clock_fn() - start
+            if elapsed > settings.max_coordinator_wall_clock_seconds:
+                await self._audit_cap_hit(session_id, actor_id, "max_wall_clock",
+                    iteration_no - 1, elapsed, token_counter_fn())
+                raise IterationCapHit("max_wall_clock",
+                    iterations=iteration_no - 1, wall_clock_s=elapsed,
+                    tokens=token_counter_fn())
+
+            tokens = token_counter_fn()
+            if tokens > settings.max_coordinator_total_tokens:
+                await self._audit_cap_hit(session_id, actor_id, "max_total_tokens",
+                    iteration_no - 1, clock_fn() - start, tokens)
+                raise IterationCapHit("max_total_tokens",
+                    iterations=iteration_no - 1, wall_clock_s=clock_fn() - start,
+                    tokens=tokens)
+
+            last_understanding, last_plan_of_work = await self.run(
+                session_id=session_id, prompt=prompt, target=target,
+                actor_id=actor_id, lane=lane, replay_opt_in=replay_opt_in,
+            )
+            # Single-pass deterministic builders: one iteration is enough.
+            # The loop exists to be tripped by adversarial fixtures that
+            # try to make the coordinator iterate (PR4.3); under normal
+            # operation we break after iteration_no=1.
+            break
+
+        return (last_understanding, last_plan_of_work, iteration_no)
+
+    async def _audit_cap_hit(self, session_id, actor_id, reason, iterations, wall_clock_s, tokens):
+        audit_logger = AuditLogger(self._db)
+        await audit_logger.log(
+            action="coordinator.iteration_cap_hit",
+            actor_id=actor_id,
+            target_entity="pentest_session",
+            target_id=str(session_id),
+            details={
+                "reason": reason,
+                "iterations": iterations,
+                "wall_clock_s": wall_clock_s,
+                "tokens": tokens,
+            },
+        )
