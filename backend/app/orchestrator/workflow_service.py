@@ -327,34 +327,72 @@ class WorkflowService:
         for m in prior.scalars().all():
             history.append({"role": m.role, "content": m.content})
 
-        # 3) call model
-        client = self._client or ModelClient()
-        try:
-            response = await client.send(
-                model_id=self._resolved_anthropic_id(session.model_id),
-                messages=history,
-                system=CHAT_SYSTEM_PROMPT,
+        # 3) call model — route through LLMRouter when multi-provider flag is ON
+        if settings.osa_multi_provider_llm:
+            from app.orchestrator.llm.router import LLMRouter  # noqa: PLC0415
+            from app.orchestrator.llm.context import get_current_user_id  # noqa: PLC0415
+
+            _provider = getattr(session, "llm_provider_pref", None) or "anthropic"
+            _user_id = getattr(session, "actor_id", None) or get_current_user_id()
+            _llm_client = await LLMRouter().route(
+                db=self._db,
+                provider=_provider,
+                user_id=_user_id,
             )
-        except ModelUnreachable as exc:
-            session.status = "interview_paused"
-            session.interview_state = "interview_paused"
-            session.resume_token = uuid.uuid4()
-            await self._db.flush()
-            await self._audit.log(
-                action="claude_api_unreachable",
-                actor_id=str(user.id),
-                target_entity="pentest_session",
-                target_id=str(session.id),
-                details={"error": str(exc), "resume_token": str(session.resume_token)},
-            )
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error": "claude_api_unreachable",
-                    "resume_token": str(session.resume_token),
-                    "message": str(exc),
-                },
-            )
+            try:
+                response = await _llm_client.send(
+                    model_id=self._resolved_anthropic_id(session.model_id),
+                    messages=history,
+                    system=CHAT_SYSTEM_PROMPT,
+                )
+            except ModelUnreachable as exc:
+                session.status = "interview_paused"
+                session.interview_state = "interview_paused"
+                session.resume_token = uuid.uuid4()
+                await self._db.flush()
+                await self._audit.log(
+                    action="claude_api_unreachable",
+                    actor_id=str(user.id),
+                    target_entity="pentest_session",
+                    target_id=str(session.id),
+                    details={"error": str(exc), "resume_token": str(session.resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "claude_api_unreachable",
+                        "resume_token": str(session.resume_token),
+                        "message": str(exc),
+                    },
+                )
+        else:
+            client = self._client or ModelClient()
+            try:
+                response = await client.send(
+                    model_id=self._resolved_anthropic_id(session.model_id),
+                    messages=history,
+                    system=CHAT_SYSTEM_PROMPT,
+                )
+            except ModelUnreachable as exc:
+                session.status = "interview_paused"
+                session.interview_state = "interview_paused"
+                session.resume_token = uuid.uuid4()
+                await self._db.flush()
+                await self._audit.log(
+                    action="claude_api_unreachable",
+                    actor_id=str(user.id),
+                    target_entity="pentest_session",
+                    target_id=str(session.id),
+                    details={"error": str(exc), "resume_token": str(session.resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "claude_api_unreachable",
+                        "resume_token": str(session.resume_token),
+                        "message": str(exc),
+                    },
+                )
 
         # 4) parse + state transition
         turn = _parse_assistant_text(response.text)

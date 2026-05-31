@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextvars import ContextVar, copy_context
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -31,15 +31,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.orchestrator.llm.context import CURRENT_USER_ID  # noqa: F401 — re-exported for tests
 from app.orchestrator.roles.base import Role, RoleResult
 from app.orchestrator.roles.registry import get_role
 
 logger = logging.getLogger(__name__)
-
-# ContextVar knob for per-request credential propagation across asyncio tasks.
-# Set by the request entrypoint; readable by any coroutine spawned via
-# _spawn_with_context() so child tasks inherit the caller's identity snapshot.
-CURRENT_USER_ID: ContextVar[str | None] = ContextVar("CURRENT_USER_ID", default=None)
 
 
 def _spawn_with_context(coro: Any) -> "asyncio.Task[Any]":

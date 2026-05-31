@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from contextvars import copy_context
 
 import pytest
@@ -79,3 +80,35 @@ def test_context_isolated_between_users() -> None:
     assert all(v == "alice" for v in results_alice), f"alice batch leaked: {results_alice}"
     assert all(v == "bob" for v in results_bob), f"bob batch leaked: {results_bob}"
     assert results_alice != results_bob
+
+
+def test_n20_gather_unique_uuids_no_leakage() -> None:
+    """N=20 tasks each with a distinct UUID see only their own UUID via copy_context()."""
+    N = 20
+    user_ids = [uuid.uuid4() for _ in range(N)]
+
+    async def _run() -> list[uuid.UUID | None]:
+        seen: list[uuid.UUID | None] = [None] * N
+
+        async def task(index: int, uid: uuid.UUID) -> None:
+            seen[index] = CURRENT_USER_ID.get()  # type: ignore[assignment]
+
+        tasks = []
+        for i, uid in enumerate(user_ids):
+            ctx = copy_context()
+            ctx.run(CURRENT_USER_ID.set, uid)
+            tasks.append(asyncio.get_event_loop().create_task(task(i, uid), context=ctx))
+
+        await asyncio.gather(*tasks)
+        return seen
+
+    results = asyncio.run(_run())
+
+    assert len(results) == N
+    for i, (expected, actual) in enumerate(zip(user_ids, results)):
+        assert actual == expected, (
+            f"task {i}: expected {expected} but got {actual} — context leaked"
+        )
+
+    # All values must be distinct (no cross-task contamination)
+    assert len(set(results)) == N, "Duplicate UUIDs across tasks — context leaked"
