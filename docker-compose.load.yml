@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  locust:
+    image: locustio/locust:latest
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/tests/_load:/mnt/locust:ro
+      - ./backend/.omc/state:/mnt/csv
+    command: >
+      -f /mnt/locust/multi_user_load_harness.py
+      --host http://backend:8000
+      --users 100
+      --spawn-rate 10
+      --run-time 60s
+      --headless
+      --csv /mnt/csv/load-run
+    ports:
+      - "8089:8089"
+    networks:
+      - osa-net
+
+  k6:
+    image: grafana/k6:latest
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/tests/_load:/mnt/k6:ro
+    command: run /mnt/k6/k6_conversation_ws.js
+    environment:
+      - OSA_WS_HOST=ws://backend:8000
+    networks:
+      - osa-net
+
+networks:
+  osa-net:
+    external: true
