@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     # credential row; the process-env ANTHROPIC_API_KEY fallback is disabled.
     osa_multi_provider_llm: bool = False
 
+    # Coordinator service flags (default OFF)
+    osa_coordinator_enabled: bool = False
+    osa_coordinator_replay_enabled: bool = False
+
     # OAuth redirect URI for LLM provider OAuth flows
     oauth_redirect_uri: str = "http://localhost:8000/api/v1/auth/llm-providers/oauth/callback"
 

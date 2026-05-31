@@ -100,6 +100,45 @@ class OrchestratorService:
         )
         await self._db.commit()
 
+        # 4.5 Coordinator façade (fresh-plan ONLY, or saved-workflow with explicit opt-in)
+        from app.core.config import settings
+        from app.orchestrator.coordinator import CoordinatorService, ReplayLaneViolation
+        from app.orchestrator.llm.base import ModelUnreachable
+
+        lane = "saved_workflow" if session.plan_json else "fresh_plan"
+        coordinator_replay_enabled = getattr(settings, "osa_coordinator_replay_enabled", False)
+        skip_coordinator_replay = bool((session.plan_json or {}).get("skip_coordinator_replay", False))
+        replay_opt_in = (lane == "saved_workflow") and coordinator_replay_enabled and not skip_coordinator_replay
+        coordinator_enabled = getattr(settings, "osa_coordinator_enabled", False)
+        if coordinator_enabled and (lane == "fresh_plan" or replay_opt_in):
+            try:
+                coordinator = CoordinatorService(self._db)
+                understanding, plan_of_work = await coordinator.run(
+                    session_id=session_id, prompt=prompt, target=target,
+                    actor_id=str(actor_id), lane=lane, replay_opt_in=replay_opt_in,
+                )
+                await self._db.commit()
+                if lane == "saved_workflow" and replay_opt_in:
+                    await coordinator.maybe_run_replay_drift_check(
+                        session_id=session_id,
+                        saved_plan_json=session.plan_json or {},
+                        fresh_understanding=understanding,
+                        fresh_plan_of_work=plan_of_work,
+                        actor_id=str(actor_id),
+                    )
+            except ReplayLaneViolation:
+                await self._audit.log(action="coordinator.skipped_for_replay_lane",
+                    actor_id=str(actor_id), target_entity="pentest_session",
+                    target_id=str(session_id), details={"lane": lane})
+            except ModelUnreachable:
+                await self._audit.log(action="coordinator.run_failed_replay_lane",
+                    actor_id=str(actor_id), target_entity="pentest_session",
+                    target_id=str(session_id), details={"lane": lane})
+        elif lane == "saved_workflow":
+            await self._audit.log(action="coordinator.skipped_for_replay_lane",
+                actor_id=str(actor_id), target_entity="pentest_session",
+                target_id=str(session_id), details={"lane": lane, "reason": "no_opt_in"})
+
         if session.plan_json:
             await event_bus.publish(str(session_id), {
                 "type": "session_update",
