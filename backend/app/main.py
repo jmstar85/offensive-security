@@ -11,6 +11,7 @@ from app.api.v1 import users as users_router
 from app.api.v1 import domain_agents as domain_agents_router
 from app.api.v1 import pentest_sessions as pentest_sessions_router
 from app.api.v1 import feature_flags as feature_flags_router
+from app.api.v1 import coordinator as coordinator_router
 from app.api.v1 import ws
 from app.core.config import settings
 from app.core.database import async_session
@@ -126,6 +127,11 @@ app.include_router(
     credentials_router.router,
     prefix=settings.api_prefix,
     tags=["credentials"],
+)
+app.include_router(
+    coordinator_router.router,
+    prefix=settings.api_prefix,
+    tags=["coordinator"],
 )
 
 # WebSocket — mounted under the same /api/v1 prefix as REST so the

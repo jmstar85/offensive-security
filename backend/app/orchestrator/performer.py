@@ -149,6 +149,7 @@ class Performer:
                 result = await reflector_wrap(
                     role.run, performer=self, context=self.state.context
                 )
+                await self._publish_role_turn(role_name, result)
                 results.append(result)
 
                 if result.error:
@@ -172,6 +173,45 @@ class Performer:
                     break
 
             return results
+
+    async def _publish_role_turn(self, role_name: str, role_result: RoleResult) -> None:
+        """Publish a role turn to topic='conversation' (scrubbed) and topic='raw_conversation' (unscrubbed).
+        Both topics are rate-limited 50 events/sec/session per SF-CRITIC-9."""
+        from app.core.events import event_bus
+        from app.safety.conversation_scrubber import ConversationScrubber
+        last_msg = role_result.messages[-1] if role_result.messages else {}
+        raw_text = str(last_msg.get("content", ""))
+        scrubber = ConversationScrubber(session_id=self.state.session_id)
+        result = scrubber.scrub(raw_text)
+        if not self._consume_publish_token():
+            return
+        await event_bus.publish(str(self.state.session_id), {
+            "type": "role_turn",
+            "role": role_name,
+            "iteration": self.state.iteration,
+            "content": result.scrubbed_text,
+            "layer_hits": result.layer_hits,
+            "circuit_open": result.circuit_open,
+        }, topic="conversation")
+        await event_bus.publish(str(self.state.session_id), {
+            "type": "role_turn_raw",
+            "role": role_name,
+            "iteration": self.state.iteration,
+            "content": raw_text,
+        }, topic="raw_conversation")
+
+    def _consume_publish_token(self) -> bool:
+        """Token-bucket: 50 capacity, refill 50/sec. Oldest-dropped on overflow."""
+        import time
+        now = time.monotonic()
+        state = self.state.context.setdefault("_publish_bucket", {"tokens": 50.0, "last": now})
+        elapsed = now - state["last"]
+        state["tokens"] = min(50.0, state["tokens"] + elapsed * 50.0)
+        state["last"] = now
+        if state["tokens"] < 1.0:
+            return False
+        state["tokens"] -= 1.0
+        return True
 
     async def _dispatch_tool(
         self,
