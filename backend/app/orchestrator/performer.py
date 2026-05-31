@@ -331,6 +331,10 @@ class Performer:
         """
         return _PerformerLease(self.state.session_id)
 
+    def _family_concurrency_guard(self, family_kind: str, max_concurrent: int = 4) -> "_FamilyLease":
+        """Acquire a per-family sub-lease. MUST be used inside the per-session lease."""
+        return _FamilyLease(self.state.session_id, family_kind, max_concurrent)
+
 
 class _PerformerLease:
     """Async context manager for the per-session concurrency lease.
@@ -356,6 +360,56 @@ class _PerformerLease:
     async def __aexit__(self, exc_type, exc, tb) -> None:
         async with _active_lock:
             _active_performers.discard(self.session_id)
+
+
+# Per-session per-family active count. Key = (session_id, family_kind). Outer
+# bound is _active_performers (per-session); this inner bound caps individual
+# family fan-out per SF-CRITIC-6.
+_family_active_counts: dict[tuple[UUID, str], int] = {}
+
+
+class FamilyConcurrencyLimit(Exception):
+    """Raised when starting a new family member would exceed the family sub-cap."""
+
+
+class _FamilyLease:
+    """Async context manager for a per-family concurrency lease.
+
+    Per SF-CRITIC-6: max_concurrent_per_family default 4, hard ceiling 8.
+    Sits INSIDE the per-session _PerformerLease — caller must already
+    hold a session lease.
+    """
+
+    def __init__(self, session_id: UUID, family_kind: str, max_concurrent: int = 4) -> None:
+        from app.orchestrator.roles.seed_xbow import FamilySpawner
+        if max_concurrent > FamilySpawner.MAX_CONCURRENT_PER_FAMILY_HARD_CEILING:
+            raise ValueError(
+                f"max_concurrent={max_concurrent} exceeds hard ceiling "
+                f"{FamilySpawner.MAX_CONCURRENT_PER_FAMILY_HARD_CEILING} (SF-CRITIC-6)"
+            )
+        self.session_id = session_id
+        self.family_kind = family_kind
+        self.max_concurrent = max_concurrent
+
+    async def __aenter__(self) -> "_FamilyLease":
+        async with _active_lock:
+            key = (self.session_id, self.family_kind)
+            count = _family_active_counts.get(key, 0)
+            if count >= self.max_concurrent:
+                raise FamilyConcurrencyLimit(
+                    f"Family '{self.family_kind}' concurrency cap reached "
+                    f"({self.max_concurrent}) for session {self.session_id}"
+                )
+            _family_active_counts[key] = count + 1
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        async with _active_lock:
+            key = (self.session_id, self.family_kind)
+            if _family_active_counts.get(key, 0) > 0:
+                _family_active_counts[key] -= 1
+            if _family_active_counts.get(key, 0) == 0:
+                _family_active_counts.pop(key, None)
 
 
 # Hard caps inherited from PentAGI's performer.go (per ADR-003 + v4.0 plan §1).
