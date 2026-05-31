@@ -15,6 +15,8 @@ export interface FeatureFlags {
    * a "Kali disabled" notice if a workflow still references those slugs.
    */
   osa_kali_backend_enabled: boolean
+  /** Gates multi-LLM credential management UI and provider routing. Default false. */
+  osa_multi_provider_llm?: boolean
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlags> {

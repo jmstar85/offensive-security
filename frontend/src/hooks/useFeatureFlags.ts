@@ -35,6 +35,7 @@ export function useFeatureFlags(): FeatureFlags | null {
         setFlags({
           osa_flow_ui_enabled: false,
           osa_kali_backend_enabled: false,
+          osa_multi_provider_llm: false,
         }),
       )
   }, [])

@@ -17,12 +17,13 @@ const BASE_NAV_ITEMS = [
   { to: "/sessions", icon: Terminal, label: "Sessions" },
   { to: "/reports", icon: FileText, label: "Reports" },
   { to: "/health", icon: Activity, label: "Health" },
-  { to: "/credentials", icon: Key, label: "Credentials" },
 ];
 
 // v4.0 P3-main — flag-gated entry to the new /flow shell. Prepended to the
 // nav list so it sits at the top once `osa_flow_ui_enabled=true`.
 const FLOW_NAV_ITEM = { to: "/flow", icon: PanelsLeftRight, label: "Flow Console" };
+
+const CREDENTIALS_NAV_ITEM = { to: "/credentials", icon: Key, label: "Credentials" };
 
 interface Props {
   children: React.ReactNode;
@@ -36,11 +37,13 @@ export function SidebarShell({ children }: Props) {
   const [query, setQuery] = useState("");
   const flags = useFeatureFlags();
 
-  // Dynamic nav list — prepend Flow Console only when the v4.0 flag is ON.
-  // BASE_NAV_ITEMS stays stable for the OFF path (v3.2.1 parity).
-  const NAV_ITEMS = flags?.osa_flow_ui_enabled
-    ? [FLOW_NAV_ITEM, ...BASE_NAV_ITEMS]
-    : BASE_NAV_ITEMS;
+  // Dynamic nav list — prepend Flow Console when v4.0 flag is ON; append
+  // Credentials when osa_multi_provider_llm is ON.
+  const NAV_ITEMS = [
+    ...(flags?.osa_flow_ui_enabled ? [FLOW_NAV_ITEM] : []),
+    ...BASE_NAV_ITEMS,
+    ...(flags?.osa_multi_provider_llm ? [CREDENTIALS_NAV_ITEM] : []),
+  ];
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
