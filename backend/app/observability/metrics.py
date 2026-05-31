@@ -127,6 +127,34 @@ class _HistogramFacade:
         return self._impl.observations(labels)
 
 
+class _GaugeFacade:
+    """Prometheus-style gauge (current value, can go up or down)."""
+
+    def __init__(self, name: str, description: str, label_names: tuple[str, ...]) -> None:
+        self._prom = None
+        if _HAS_PROM:
+            try:
+                from prometheus_client import Gauge as _PromGauge  # noqa: PLC0415
+                self._prom = _PromGauge(name, description, label_names)
+            except Exception:  # noqa: BLE001
+                pass
+        self.label_names = label_names
+        self._current: dict[tuple, float] = {}
+
+    def set(self, value: float, **labels: str) -> None:
+        key = _label_key(labels)
+        with _LOCK:
+            self._current[key] = value
+        if self._prom is not None:
+            if labels:
+                self._prom.labels(**labels).set(value)
+            else:
+                self._prom.set(value)
+
+    def value(self, **labels: str) -> float:
+        return self._current.get(_label_key(labels), 0.0)
+
+
 class MetricsRegistry:
     """Single global registry instance (``metrics``)."""
 
@@ -203,6 +231,32 @@ class MetricsRegistry:
             "osa_kali_filter_plan_block_total",
             "Steps dropped by filter_plan_steps kali_* branch.",
             ("tool_slug", "reason"),
+        )
+        # ── Multi-provider LLM + budget guard (PR1.5) ────────────────────────
+        self.llm_tokens_total = _CounterFacade(
+            "osa_llm_tokens_total",
+            "LLM tokens consumed by provider, model, and kind (prompt|completion).",
+            ("provider", "model", "kind"),
+        )
+        self.llm_cost_usd_total = _CounterFacade(
+            "osa_llm_cost_usd_total",
+            "USD cost incurred by provider and model.",
+            ("provider", "model"),
+        )
+        self.budget_guard_layer_a_block_total = _CounterFacade(
+            "osa_budget_guard_layer_a_block_total",
+            "Pre-spawn aggregate budget guard blocks.",
+            ("reason",),
+        )
+        self.budget_guard_layer_b_block_total = _CounterFacade(
+            "osa_budget_guard_layer_b_block_total",
+            "Per-task pre-call budget guard blocks.",
+            ("reason",),
+        )
+        self.budget_guard_estimator_drift = _GaugeFacade(
+            "osa_budget_guard_estimator_drift",
+            "Rolling 24h actual/estimated cost ratio per provider.",
+            ("provider",),
         )
 
 
