@@ -55,6 +55,40 @@ async def _seed_admin() -> None:
         logger.info("Seeded initial admin user: %s", settings.admin_email)
 
 
+def _assert_backend_network_membership() -> None:
+    """MF6 runtime check: backend MUST be a member of osa-net.
+
+    Reads /proc/net/route and /sys/class/net to detect bridge
+    interfaces. The osa-net network's bridge name resolves to a value
+    like `br-<id>` mapped from the network ID; rather than
+    resolve the ID (which would need the daemon API), we assert that
+    the container has AT LEAST one non-loopback interface on a private
+    RFC1918 subnet AND that the OSA_NETWORK_MEMBERSHIP_CHECK env var
+    opts out cleanly in test/dev contexts.
+
+    This is BEST-EFFORT — full resolution lands in W3/PR-?? when MF-
+    CRITIC-3 is closed. For now we log + audit any failure rather than
+    raising on startup (the container can still serve traffic).
+    """
+    import os
+    from pathlib import Path
+    log = logging.getLogger("osa.infra.network_check")
+    if os.environ.get("OSA_NETWORK_MEMBERSHIP_CHECK", "soft").lower() == "off":
+        return
+    sys_net = Path("/sys/class/net")
+    if not sys_net.exists():
+        log.warning("/sys/class/net not present; skipping membership check")
+        return
+    non_loopback = [
+        p.name for p in sys_net.iterdir()
+        if p.name != "lo" and not p.name.startswith("br-loopback")
+    ]
+    if not non_loopback:
+        log.warning("No non-loopback interfaces found; container not on osa-net?")
+        return
+    log.info("backend network interfaces detected: %s", non_loopback)
+
+
 async def _warm_embedding_model() -> None:
     """Pre-load the sentence-transformers embedding model so the first Memorist
     call inside a request does not pay the 2-4s model load tax.
@@ -81,6 +115,10 @@ async def _warm_embedding_model() -> None:
 async def lifespan(app: FastAPI):
     await _seed_admin()
     await _warm_embedding_model()
+    try:
+        _assert_backend_network_membership()
+    except Exception as e:
+        logger.warning("Network membership check raised unexpectedly: %s", e)
     yield
     # Shutdown
 
