@@ -123,3 +123,27 @@ export interface MsgChainRow {
 
 export const getMsgChains = (sessionId: string) =>
   api.get<MsgChainRow[]>(`/pentest-sessions/${sessionId}/msgchains`)
+
+// W4/PR4.4 — FlowConsoleHeader data sources.
+export interface AgentFamilyRow {
+  id: string
+  family_kind: string
+  status: string
+  depth: number
+  max_depth: number
+  context_json: Record<string, unknown> | null
+  tokens_consumed: number
+}
+
+export const getAgentFamilies = (sessionId: string) =>
+  api.get<AgentFamilyRow[]>(`/pentest-sessions/${sessionId}/agent-families`)
+
+export interface PentestSessionRow {
+  id: string
+  cost_usd_accum: number | null
+  status: string
+  coordinator_revision_no: number
+}
+
+export const getPentestSessionCoordinator = (sessionId: string) =>
+  api.get<PentestSessionRow>(`/pentest-sessions/${sessionId}`)

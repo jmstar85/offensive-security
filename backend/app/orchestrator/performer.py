@@ -178,12 +178,23 @@ class Performer:
         """Publish a role turn to topic='conversation' (scrubbed) and topic='raw_conversation' (unscrubbed).
         Both topics are rate-limited 50 events/sec/session per SF-CRITIC-9."""
         from app.core.events import event_bus
+        from app.observability.metrics import conversation_topic_dropped_events_total
         from app.safety.conversation_scrubber import ConversationScrubber
         last_msg = role_result.messages[-1] if role_result.messages else {}
         raw_text = str(last_msg.get("content", ""))
         scrubber = ConversationScrubber(session_id=self.state.session_id)
         result = scrubber.scrub(raw_text)
         if not self._consume_publish_token():
+            conversation_topic_dropped_events_total.inc(
+                1.0,
+                session_id=str(self.state.session_id),
+                topic="conversation",
+            )
+            conversation_topic_dropped_events_total.inc(
+                1.0,
+                session_id=str(self.state.session_id),
+                topic="raw_conversation",
+            )
             return
         await event_bus.publish(str(self.state.session_id), {
             "type": "role_turn",

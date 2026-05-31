@@ -47,6 +47,7 @@ class AgentFamilyResponse(BaseModel):
     depth: int
     max_depth: int
     context_json: dict | None
+    tokens_consumed: int = 0
 
 
 class EnrichUnderstandingRequest(BaseModel):
@@ -148,6 +149,8 @@ async def get_agent_families(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.orchestrator.family_budget_tracker import tracker as budget_tracker
+
     result = await db.execute(
         select(PentestSession).where(PentestSession.id == session_id)
     )
@@ -168,6 +171,7 @@ async def get_agent_families(
             depth=f.depth,
             max_depth=f.max_depth,
             context_json=f.context_json,
+            tokens_consumed=budget_tracker.get(session_id, f.family_kind),
         )
         for f in families
     ]

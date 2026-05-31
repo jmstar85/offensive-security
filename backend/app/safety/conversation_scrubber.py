@@ -7,6 +7,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.observability.metrics import (
+    conversation_scrubber_circuit_open_total,
+    conversation_scrubber_hits_total,
+)
+
 
 @dataclass
 class ScrubResult:
@@ -115,6 +120,7 @@ class ConversationScrubber:
             new_result, count = pattern.subn(_replace, result)
             if count:
                 hits["l1"] += count
+                conversation_scrubber_hits_total.inc(float(count), layer="l1")
                 for _ in range(count):
                     if not self._consume_token():
                         circuit_open = True
@@ -127,6 +133,7 @@ class ConversationScrubber:
                 entropy = _shannon_entropy(token)
                 if entropy >= self._l2_threshold:
                     hits["l2"] += 1
+                    conversation_scrubber_hits_total.inc(1.0, layer="l2")
                     if not self._consume_token():
                         circuit_open = True
                     result = result.replace(
@@ -136,10 +143,14 @@ class ConversationScrubber:
         # Layer 3: canary check
         if self._canary in result:
             hits["l3"] += 1
+            conversation_scrubber_hits_total.inc(1.0, layer="l3")
             canary_leaked = True
             if not self._consume_token():
                 circuit_open = True
             result = result.replace(self._canary, "[REDACTED:canary_leak]")
+
+        if circuit_open:
+            conversation_scrubber_circuit_open_total.inc(1.0, session_id=str(self._session_id))
 
         return ScrubResult(
             scrubbed_text=result,

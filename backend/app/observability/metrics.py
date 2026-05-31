@@ -258,9 +258,37 @@ class MetricsRegistry:
             "Rolling 24h actual/estimated cost ratio per provider.",
             ("provider",),
         )
+        # ── W4/PR4.4 — per-family token budget and per-layer scrubber counters ──
+        self.family_tokens_total = _CounterFacade(
+            "osa_family_tokens_total",
+            "Total LLM tokens consumed per family per session",
+            ("session_id", "family_kind"),
+        )
+        self.conversation_scrubber_hits_total = _CounterFacade(
+            "osa_conversation_scrubber_hits_total",
+            "Scrubber layer-hit count by layer",
+            ("layer",),
+        )
+        self.conversation_scrubber_circuit_open_total = _CounterFacade(
+            "osa_conversation_scrubber_circuit_open_total",
+            "Number of times the L4 token-bucket circuit opened",
+            ("session_id",),
+        )
+        self.conversation_topic_dropped_events_total = _CounterFacade(
+            "osa_conversation_topic_dropped_events_total",
+            "Events dropped by the per-session rate limiter",
+            ("session_id", "topic"),
+        )
 
 
 metrics = MetricsRegistry()
+
+
+# Module-level aliases so other modules can import these counters directly.
+family_tokens_total = metrics.family_tokens_total
+conversation_scrubber_hits_total = metrics.conversation_scrubber_hits_total
+conversation_scrubber_circuit_open_total = metrics.conversation_scrubber_circuit_open_total
+conversation_topic_dropped_events_total = metrics.conversation_topic_dropped_events_total
 
 
 def ambiguity_bucket(score: float) -> str:

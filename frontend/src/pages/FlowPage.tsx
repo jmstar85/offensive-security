@@ -11,6 +11,7 @@
  */
 import { useParams } from 'react-router-dom'
 
+import { FlowConsoleHeader } from '@/components/coordinator/FlowConsoleHeader'
 import { LeftPane } from '@/components/flow/LeftPane'
 import { RightPane } from '@/components/flow/RightPane'
 import {
@@ -30,12 +31,15 @@ export default function FlowPage() {
   }
 
   return (
-    <>
-      <TwoPaneShell
-        left={<LeftPane sessionId={id} />}
-        right={<RightPane sessionId={id} />}
-      />
-      <MobileSinglePane left={<LeftPane sessionId={id} />} />
-    </>
+    <div className="flex flex-col h-dvh">
+      <FlowConsoleHeader sessionId={id} />
+      <div className="flex-1 min-h-0">
+        <TwoPaneShell
+          left={<LeftPane sessionId={id} />}
+          right={<RightPane sessionId={id} />}
+        />
+        <MobileSinglePane left={<LeftPane sessionId={id} />} />
+      </div>
+    </div>
   )
 }
