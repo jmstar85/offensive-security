@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     pentester_max_tool_calls: int = 100
     limited_role_max_tool_calls: int = 20
 
+    # Set via env CREDENTIAL_FERNET_KEY (base64 32-byte). Required when osa_multi_provider_llm=True.
+    credential_fernet_key: str = ""
+
+    # Multi-provider LLM flag — when True, all requests MUST resolve a per-user
+    # credential row; the process-env ANTHROPIC_API_KEY fallback is disabled.
+    osa_multi_provider_llm: bool = False
+
+    # OAuth redirect URI for LLM provider OAuth flows
+    oauth_redirect_uri: str = "http://localhost:8000/api/v1/auth/llm-providers/oauth/callback"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
