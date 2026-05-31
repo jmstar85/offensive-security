@@ -21,6 +21,12 @@ export interface FeatureFlags {
   osa_coordinator_enabled?: boolean
   /** Gates AgentFamilyTree UI and family-spawning API surface. Default false. */
   osa_xbow_families_enabled?: boolean
+  /** Gates MITM proxy interception tab (TEAM_ADMIN only). Default false. */
+  osa_mitm_proxy_enabled?: boolean
+  /** Gates headless browser tool surface. Default false. */
+  osa_headless_browser_enabled?: boolean
+  /** Gates interactsh OOB collaborator tab. Default false. */
+  osa_collaborator_enabled?: boolean
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlags> {

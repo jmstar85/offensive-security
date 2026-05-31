@@ -13,8 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs'
 import { TerminalTab } from './tabs/TerminalTab'
 import { TasksTab } from './tabs/TasksTab'
 import { AgentsTab } from './tabs/AgentsTab'
+import { InterceptionTab } from '../interception/InterceptionTab'
+import { CollaboratorTab } from '../collaborator/CollaboratorTab'
+import { useFeatureFlags } from '../../hooks/useFeatureFlags'
 
 export function RightPane({ sessionId }: { sessionId: string }) {
+  const featureFlags = useFeatureFlags()
+
   return (
     <Tabs defaultValue="terminal" className="h-full flex flex-col">
       <TabsList className="border-b flex shrink-0 bg-muted/30 overflow-x-auto">
@@ -36,6 +41,22 @@ export function RightPane({ sessionId }: { sessionId: string }) {
         >
           Agents
         </TabsTrigger>
+        {featureFlags?.osa_mitm_proxy_enabled && (
+          <TabsTrigger
+            value="interception"
+            className="px-4 py-2 text-sm font-medium data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary"
+          >
+            Interception
+          </TabsTrigger>
+        )}
+        {featureFlags?.osa_collaborator_enabled && (
+          <TabsTrigger
+            value="collaborator"
+            className="px-4 py-2 text-sm font-medium data-[state=active]:bg-background data-[state=active]:border-b-2 data-[state=active]:border-primary"
+          >
+            Collaborator
+          </TabsTrigger>
+        )}
       </TabsList>
       <TabsContent value="terminal" className="flex-1 overflow-hidden">
         <TerminalTab sessionId={sessionId} />
@@ -46,6 +67,16 @@ export function RightPane({ sessionId }: { sessionId: string }) {
       <TabsContent value="agents" className="flex-1 overflow-y-auto p-2">
         <AgentsTab sessionId={sessionId} />
       </TabsContent>
+      {featureFlags?.osa_mitm_proxy_enabled && (
+        <TabsContent value="interception" className="flex-1 overflow-hidden">
+          <InterceptionTab sessionId={sessionId} />
+        </TabsContent>
+      )}
+      {featureFlags?.osa_collaborator_enabled && (
+        <TabsContent value="collaborator" className="flex-1 overflow-hidden">
+          <CollaboratorTab sessionId={sessionId} />
+        </TabsContent>
+      )}
     </Tabs>
   )
 }

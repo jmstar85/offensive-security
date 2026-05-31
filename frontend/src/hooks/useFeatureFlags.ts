@@ -38,6 +38,9 @@ export function useFeatureFlags(): FeatureFlags | null {
           osa_multi_provider_llm: false,
           osa_coordinator_enabled: false,
           osa_xbow_families_enabled: false,
+          osa_mitm_proxy_enabled: false,
+          osa_headless_browser_enabled: false,
+          osa_collaborator_enabled: false,
         }),
       )
   }, [])

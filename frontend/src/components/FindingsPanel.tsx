@@ -34,6 +34,18 @@ export interface Finding {
   service?: string;
   protocol?: string;
   version?: string;
+  // proxy_request
+  method?: string;
+  url?: string;
+  length?: number;
+  // oob_callback
+  correlation_id?: string;
+  timestamp?: string;
+  // dom_xss_probe
+  detected?: boolean;
+  // csrf_form_replay
+  form_id?: string;
+  replayed_count?: number;
   // Catch-all for unknown shapes — we render this as JSON in the fallback.
   [key: string]: unknown;
 }
@@ -110,6 +122,107 @@ function FindingRow({ f }: { f: Finding }) {
         </span>
         <span className="text-muted-foreground">{f.service}</span>
         {f.version && <span className="text-muted-foreground">{f.version}</span>}
+      </div>
+    );
+  }
+  if (f.type === "proxy_request") {
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        {sev}
+        <span
+          className={`font-mono font-semibold ${
+            f.method === "GET"
+              ? "text-blue-400"
+              : f.method === "POST"
+              ? "text-green-400"
+              : f.method === "PUT" || f.method === "PATCH"
+              ? "text-amber-400"
+              : f.method === "DELETE"
+              ? "text-rose-400"
+              : "text-foreground"
+          }`}
+        >
+          {f.method}
+        </span>
+        <span className="font-mono text-foreground truncate max-w-[200px]">{f.url}</span>
+        {typeof f.status === "number" && (
+          <span
+            className={`font-mono ${
+              f.status >= 500
+                ? "text-rose-400"
+                : f.status >= 400
+                ? "text-amber-400"
+                : f.status >= 300
+                ? "text-blue-400"
+                : "text-green-400"
+            }`}
+          >
+            {f.status}
+          </span>
+        )}
+        {typeof f.length === "number" && (
+          <span className="text-muted-foreground">{f.length}B</span>
+        )}
+      </div>
+    );
+  }
+  if (f.type === "oob_callback") {
+    const shortId = f.correlation_id ? f.correlation_id.slice(-8) : "?";
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        {sev}
+        <span
+          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+            f.protocol === "DNS"
+              ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+              : f.protocol === "HTTP"
+              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+              : "bg-muted text-muted-foreground border border-border"
+          }`}
+        >
+          {f.protocol}
+        </span>
+        <span className="font-mono text-foreground">{shortId}</span>
+        {f.timestamp && (
+          <span className="text-muted-foreground">{f.timestamp}</span>
+        )}
+      </div>
+    );
+  }
+  if (f.type === "dom_xss_probe") {
+    const payloadPreview = f.payload
+      ? String(f.payload).slice(0, 60) + (String(f.payload).length > 60 ? "…" : "")
+      : null;
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        {sev}
+        <span className="font-mono text-foreground truncate max-w-[160px]">{f.url}</span>
+        {payloadPreview && (
+          <code className="text-[11px] text-muted-foreground truncate max-w-[120px]">
+            {payloadPreview}
+          </code>
+        )}
+        <span
+          className={`font-semibold ${
+            f.detected ? "text-green-400" : "text-rose-400"
+          }`}
+        >
+          {f.detected ? "✓" : "✗"}
+        </span>
+      </div>
+    );
+  }
+  if (f.type === "csrf_form_replay") {
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        {sev}
+        <span className="font-mono text-foreground truncate max-w-[160px]">{f.url}</span>
+        {f.form_id && (
+          <span className="text-muted-foreground font-mono">{f.form_id}</span>
+        )}
+        {typeof f.replayed_count === "number" && (
+          <span className="text-muted-foreground">×{f.replayed_count}</span>
+        )}
       </div>
     );
   }
