@@ -1,9 +1,20 @@
+import { useState } from 'react'
+
+interface ApprovalFlags {
+  approved_active_recon?: boolean
+  approved_active_exploit?: boolean
+  approved_mid_active?: boolean
+  approved_mitm_proxy?: boolean
+  approved_headless_browser?: boolean
+  approved_interactsh?: boolean
+}
+
 interface Props {
   preview: { is_valid: boolean; violations: string[]; step_count: number } | null
   approving: boolean
   rejecting: boolean
   onRefresh: () => void
-  onApprove: () => void
+  onApprove: (flags: ApprovalFlags) => void
   onReject: () => void
   onOpenForceApprove: () => void
   canApprove: boolean
@@ -24,6 +35,31 @@ export default function ApprovalPreviewPanel({
   ambiguityOverrideReason,
 }: Props) {
   const ready = state === 'ready_for_review'
+
+  const [flags, setFlags] = useState<ApprovalFlags>({
+    approved_active_recon: false,
+    approved_active_exploit: false,
+    approved_mid_active: false,
+    approved_mitm_proxy: false,
+    approved_headless_browser: false,
+    approved_interactsh: false,
+  })
+
+  function toggle(key: keyof ApprovalFlags) {
+    setFlags((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function buildFlagsForPost(): ApprovalFlags {
+    // If any slug-level mid_active toggle is on, also assert approved_mid_active
+    // so the backend tier gate is satisfied.
+    const midActiveAggregated =
+      flags.approved_mid_active ||
+      flags.approved_mitm_proxy ||
+      flags.approved_headless_browser ||
+      flags.approved_interactsh
+    return { ...flags, approved_mid_active: midActiveAggregated }
+  }
+
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -78,11 +114,74 @@ export default function ApprovalPreviewPanel({
             </div>
           )}
 
+          {/* Approval flag toggles */}
+          <div className="space-y-3 text-xs">
+            {/* Active recon */}
+            <div className="space-y-1">
+              <div className="text-gray-500 uppercase tracking-wide font-semibold">Active recon</div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!flags.approved_active_recon}
+                  onChange={() => toggle('approved_active_recon')}
+                  className="accent-emerald-500"
+                />
+                <span className="text-gray-300">Active recon approved</span>
+              </label>
+            </div>
+
+            {/* Mid-active */}
+            <div className="space-y-1">
+              <div className="text-gray-500 uppercase tracking-wide font-semibold">Mid-active</div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!flags.approved_mitm_proxy}
+                  onChange={() => toggle('approved_mitm_proxy')}
+                  className="accent-yellow-400"
+                />
+                <span className="text-gray-300">MITM proxy interception</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!flags.approved_headless_browser}
+                  onChange={() => toggle('approved_headless_browser')}
+                  className="accent-yellow-400"
+                />
+                <span className="text-gray-300">Headless browser probes</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!flags.approved_interactsh}
+                  onChange={() => toggle('approved_interactsh')}
+                  className="accent-yellow-400"
+                />
+                <span className="text-gray-300">OOB Collaborator (Interactsh)</span>
+              </label>
+            </div>
+
+            {/* Active exploit */}
+            <div className="space-y-1">
+              <div className="text-gray-500 uppercase tracking-wide font-semibold">Active exploit</div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!flags.approved_active_exploit}
+                  onChange={() => toggle('approved_active_exploit')}
+                  className="accent-red-500"
+                />
+                <span className="text-gray-300">Active exploit approved</span>
+              </label>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <button
               type="button"
               disabled={!canApprove || approving}
-              onClick={onApprove}
+              onClick={() => onApprove(buildFlagsForPost())}
               className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-3 py-1.5 rounded text-sm font-medium"
             >
               {approving ? 'Approving…' : 'Approve & execute'}

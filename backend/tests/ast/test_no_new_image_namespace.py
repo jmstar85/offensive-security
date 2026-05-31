@@ -24,8 +24,10 @@ FILTER = (
     / "socket_proxy_filter.py"
 )
 
-EXPECTED_NAMESPACE_COUNT = 1
-EXPECTED_NAMESPACES = {"osa-kali"}
+EXPECTED_NAMESPACE_COUNT = 4
+EXPECTED_NAMESPACES = {
+    "osa-kali", "osa-mitmproxy", "osa-headless-browser", "osa-interactsh",
+}
 
 
 def _image_regex_literal() -> str | None:

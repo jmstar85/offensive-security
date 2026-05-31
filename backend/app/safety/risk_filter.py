@@ -24,6 +24,7 @@ TIER_RISK: dict[str, float] = {
     "passive_no_target_contact": 0.05,
     "passive_low_touch": 0.30,
     "active_recon": 0.55,
+    "mid_active": 0.70,
     "active_exploit": 0.85,
 }
 

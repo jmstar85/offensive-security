@@ -34,7 +34,10 @@ def test_tool_meta_includes_description_field():
 def test_kali_descriptions_mention_kali():
     metas = {e.slug: _tool_meta(e) for e in list_tool_entries()
              if e.slug.startswith("kali_")}
-    assert set(metas) == {"kali_gobuster", "kali_sqlmap", "kali_nikto"}
+    assert set(metas) == {
+        "kali_gobuster", "kali_sqlmap", "kali_nikto",
+        "kali_xsstrike", "kali_dalfox", "kali_ffuf", "kali_commix",
+    }
     for slug, meta in metas.items():
         assert "Kali" in meta["description"], f"{slug} description: {meta['description']}"
 

@@ -9,11 +9,12 @@ from app.safety.risk_filter import (
 from app.agents.registry import list_tool_entries
 
 
-def test_tier_risk_has_all_four_tiers():
+def test_tier_risk_has_all_five_tiers():
     assert set(TIER_RISK.keys()) == {
         "passive_no_target_contact",
         "passive_low_touch",
         "active_recon",
+        "mid_active",
         "active_exploit",
     }
 
@@ -24,6 +25,7 @@ def test_tier_risk_monotonic_increase():
         TIER_RISK["passive_no_target_contact"]
         < TIER_RISK["passive_low_touch"]
         < TIER_RISK["active_recon"]
+        < TIER_RISK["mid_active"]
         < TIER_RISK["active_exploit"]
     )
 

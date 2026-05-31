@@ -29,6 +29,9 @@ from app.agents.nmap import NmapAdapter
 from app.agents.nuclei import NucleiAdapter
 from app.agents.passive_recon import PassiveReconAdapter
 from app.agents.pyrit import PyRITAdapter
+from app.agents.headless_browser import HeadlessBrowserAdapter
+from app.agents.interactsh import InteractshAdapter
+from app.agents.mitmproxy import MitmProxyAdapter
 from app.agents.subfinder import SubfinderAdapter
 from app.agents.wappalyzer import WappalyzerAdapter
 
@@ -36,6 +39,7 @@ Tier = Literal[
     "passive_no_target_contact",
     "passive_low_touch",
     "active_recon",
+    "mid_active",
     "active_exploit",
 ]
 
@@ -232,6 +236,96 @@ _REGISTRY: dict[str, ToolEntry] = {
         default_risk_band=RiskLevel.MEDIUM,
         is_destructive_capable=False,
         description="Nikto: web-server misconfiguration scanner (Kali).",
+    ),
+    # ── W3 mid_active / new adapters ─────────────────────────────────────
+    "mitm_proxy": ToolEntry(
+        slug="mitm_proxy",
+        adapter_cls=MitmProxyAdapter,
+        docker_image="osa-mitmproxy:latest",
+        tier="mid_active",
+        capabilities=("intercept_http", "intercept_https", "addon_inject"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="MITM HTTP/HTTPS interception sidecar.",
+    ),
+    "headless_browser": ToolEntry(
+        slug="headless_browser",
+        adapter_cls=HeadlessBrowserAdapter,
+        docker_image="osa-headless-browser:latest",
+        tier="mid_active",
+        capabilities=("dom_render", "js_eval", "csrf_replay"),
+        applicable_domain_tags=frozenset({"web"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="Playwright-based DOM/JS probe runner.",
+    ),
+    "session_manager": ToolEntry(
+        slug="session_manager",
+        adapter_cls=HeadlessBrowserAdapter,  # piggybacks on headless for cookie/session work
+        docker_image="osa-headless-browser:latest",
+        tier="mid_active",
+        capabilities=("session_replay", "cookie_juggle"),
+        applicable_domain_tags=frozenset({"web"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="Cookie + session replay coordinator (uses headless sidecar).",
+    ),
+    "interactsh_collaborator": ToolEntry(
+        slug="interactsh_collaborator",
+        adapter_cls=InteractshAdapter,
+        docker_image="osa-interactsh:latest",
+        tier="passive_low_touch",
+        capabilities=("oob_dns", "oob_http"),
+        applicable_domain_tags=frozenset({"web", "api", "network"}),
+        default_risk_band=RiskLevel.LOW,
+        is_destructive_capable=False,
+        description="Out-of-band collaborator for OOB-XSS/SSRF correlation.",
+    ),
+    # ── W3 Kali slugs (xsstrike/dalfox/ffuf/commix) ──────────────────────
+    "kali_xsstrike": ToolEntry(
+        slug="kali_xsstrike",
+        adapter_cls=(__import__("app.agents.kali_exec", fromlist=["KaliGobusterAdapter"]).KaliGobusterAdapter),
+        docker_image="osa-kali:latest",
+        tier="active_exploit",
+        capabilities=("dom_xss", "reflected_xss"),
+        applicable_domain_tags=frozenset({"web"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+        description="xsstrike — XSS probe (Kali).",
+    ),
+    "kali_dalfox": ToolEntry(
+        slug="kali_dalfox",
+        adapter_cls=(__import__("app.agents.kali_exec", fromlist=["KaliGobusterAdapter"]).KaliGobusterAdapter),
+        docker_image="osa-kali:latest",
+        tier="active_exploit",
+        capabilities=("dom_xss",),
+        applicable_domain_tags=frozenset({"web"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+        description="dalfox — XSS scanner (Kali).",
+    ),
+    "kali_ffuf": ToolEntry(
+        slug="kali_ffuf",
+        adapter_cls=(__import__("app.agents.kali_exec", fromlist=["KaliGobusterAdapter"]).KaliGobusterAdapter),
+        docker_image="osa-kali:latest",
+        tier="active_recon",
+        capabilities=("dir_fuzz", "param_fuzz"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="ffuf — fuzzer (Kali).",
+    ),
+    "kali_commix": ToolEntry(
+        slug="kali_commix",
+        adapter_cls=(__import__("app.agents.kali_exec", fromlist=["KaliGobusterAdapter"]).KaliGobusterAdapter),
+        docker_image="osa-kali:latest",
+        tier="active_exploit",
+        capabilities=("command_injection",),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.HIGH,
+        is_destructive_capable=True,
+        description="commix — command-injection (Kali).",
     ),
 }
 
