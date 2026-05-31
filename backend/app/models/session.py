@@ -63,6 +63,10 @@ class PentestSession(Base, UUIDMixin, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     rescope_request_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    understanding_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    plan_of_work_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    coordinator_revision_no: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    llm_provider_pref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     resume_token: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
