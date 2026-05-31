@@ -97,6 +97,8 @@ class Settings(BaseSettings):
 
     # Kali coexistence backend (v1 — default OFF; double-enforced at get_adapter + palette_for_domain)
     osa_kali_backend_enabled: bool = False
+    # XBOW agent families (default OFF; lazy-registered at startup via lazy_register_if_enabled)
+    osa_xbow_families_enabled: bool = False
     # Kali docker socket proxy endpoint (used by KaliBackend only; PR-7 wires this into docker-compose)
     kali_docker_host: str = "tcp://docker-socket-proxy:2375"
 

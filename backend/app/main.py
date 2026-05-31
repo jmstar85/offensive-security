@@ -15,6 +15,10 @@ from app.api.v1 import coordinator as coordinator_router
 from app.api.v1 import ws
 from app.core.config import settings
 from app.core.database import async_session
+
+# XBOW family registration — gated to keep ROLE_TOPOLOGICAL_ORDER pristine when off.
+from app.orchestrator.roles.registry import lazy_register_if_enabled as _lazy_register_xbow
+_lazy_register_xbow(getattr(settings, "osa_xbow_families_enabled", False))
 from app.core.security import hash_password
 from app.models.user import Team, User, UserRole
 

@@ -46,3 +46,17 @@ def get_role(name: str) -> Type[Role]:
 def list_roles() -> list[str]:
     """Return all registered role slugs (sorted, deterministic)."""
     return sorted(ROLE_REGISTRY.keys())
+
+
+def lazy_register_if_enabled(flag: bool, role_module_path: str = "app.orchestrator.roles.seed_xbow") -> bool:
+    """Import the seed_xbow module and call its _register_all() ONLY when flag is True.
+
+    Returns True if registration ran, False if skipped. Idempotent — repeated
+    calls with flag=True are safe.
+    """
+    if not flag:
+        return False
+    import importlib
+    module = importlib.import_module(role_module_path)
+    module._register_all()
+    return True
