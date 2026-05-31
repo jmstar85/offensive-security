@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextvars import ContextVar, copy_context
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -34,6 +35,22 @@ from app.orchestrator.roles.base import Role, RoleResult
 from app.orchestrator.roles.registry import get_role
 
 logger = logging.getLogger(__name__)
+
+# ContextVar knob for per-request credential propagation across asyncio tasks.
+# Set by the request entrypoint; readable by any coroutine spawned via
+# _spawn_with_context() so child tasks inherit the caller's identity snapshot.
+CURRENT_USER_ID: ContextVar[str | None] = ContextVar("CURRENT_USER_ID", default=None)
+
+
+def _spawn_with_context(coro: Any) -> "asyncio.Task[Any]":
+    """Schedule *coro* as a Task that inherits a snapshot of the current context.
+
+    copy_context() captures the current ContextVar state at call time so that
+    CURRENT_USER_ID (and any other ContextVars) are visible inside the task
+    even after the parent context mutates them.
+    """
+    ctx = copy_context()
+    return asyncio.get_event_loop().create_task(coro, context=ctx)
 
 
 # Track active Performer instances per session for the concurrency cap.
