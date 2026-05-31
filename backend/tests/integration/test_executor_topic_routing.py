@@ -51,10 +51,10 @@ def _publish_sites() -> list[str]:
     return sites
 
 
-def test_executor_has_five_publish_sites():
+def test_executor_has_six_publish_sites():
     sites = _publish_sites()
-    assert len(sites) == 5, (
-        f"Expected 5 publish sites in executor.py; found {len(sites)}. "
+    assert len(sites) == 6, (
+        f"Expected 6 publish sites in executor.py; found {len(sites)}. "
         "If you added or removed one, update this regression test."
     )
 

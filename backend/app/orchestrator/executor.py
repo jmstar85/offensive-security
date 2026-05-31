@@ -11,6 +11,7 @@ from app.agents.kali_whitelist import SafetyViolation
 from app.agents.registry import get_adapter
 from app.core.events import event_bus
 from app.models.session import AgentExecution
+from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
 from app.safety.audit import AuditLogger
 from app.safety.audit_kali import persist_kali_shim_block
 from app.safety.egress_monitor import EgressMonitor
@@ -158,6 +159,62 @@ class PlanExecutor:
                     output_json={"findings": step_findings},
                 )
             )
+
+            # PR2b.3: harvest newly-discovered hosts from step findings and trigger
+            # rescope automatically. Findings shaped as either:
+            #   - {'new_hosts': [{'host': str, 'tier': str}], ...}  (preferred)
+            #   - {'host': str, 'tier': str, 'is_new': True}        (per-finding)
+            new_host_records: list[DiscoveredTarget] = []
+            for f in step_findings:
+                if not isinstance(f, dict):
+                    continue
+                # Shape A — explicit new_hosts list inside a single finding row
+                for nh in (f.get("new_hosts") or []):
+                    host = nh.get("host") if isinstance(nh, dict) else None
+                    tier = (nh.get("tier") if isinstance(nh, dict) else None) or "passive_recon"
+                    if host:
+                        new_host_records.append(DiscoveredTarget(
+                            host=host, tier=tier,
+                            discovered_by_step_id=str(step.get("id") or step.get("order", "")),
+                        ))
+                # Shape B — finding row IS a discovered host
+                if f.get("is_new") and f.get("host"):
+                    new_host_records.append(DiscoveredTarget(
+                        host=f["host"],
+                        tier=f.get("tier", "passive_recon"),
+                        discovered_by_step_id=str(step.get("id") or step.get("order", "")),
+                    ))
+
+            if new_host_records:
+                rescope = RescopeService(self._db)
+                try:
+                    approval = await rescope.pause_for_rescope(
+                        session_id=session_id,
+                        discovered=new_host_records,
+                        requesting_step_id=str(step.get("id") or step.get("order", "")),
+                    )
+                    if approval is not None:
+                        # Session paused — emit a session_update so the UI swaps to
+                        # the rescope-pending state, then stop iterating further
+                        # steps. The orchestrator will pick up again when the
+                        # operator decides via RescopeService.decide_rescope.
+                        await event_bus.publish(str(session_id), {
+                            "type": "session_update",
+                            "status": "paused_for_rescope",
+                            "rescope_id": str(approval.id),
+                        }, topic="session")
+                        return all_findings
+                except Exception as exc:  # noqa: BLE001
+                    # Rescope service raised — log + continue with already-approved
+                    # scope. The egress monitor remains the authoritative gate.
+                    await self._audit.log(
+                        action="rescope_trigger_failed",
+                        actor_id=actor_id,
+                        target_entity="pentest_session",
+                        target_id=str(session_id),
+                        details={"error": str(exc)},
+                    )
+
             await event_bus.publish(str(session_id), {
                 "type": "agent_completed",
                 "agent": agent_type,
