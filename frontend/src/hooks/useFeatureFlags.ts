@@ -36,6 +36,7 @@ export function useFeatureFlags(): FeatureFlags | null {
           osa_flow_ui_enabled: false,
           osa_kali_backend_enabled: false,
           osa_multi_provider_llm: false,
+          osa_coordinator_enabled: false,
         }),
       )
   }, [])

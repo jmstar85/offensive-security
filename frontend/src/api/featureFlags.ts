@@ -17,6 +17,8 @@ export interface FeatureFlags {
   osa_kali_backend_enabled: boolean
   /** Gates multi-LLM credential management UI and provider routing. Default false. */
   osa_multi_provider_llm?: boolean
+  /** Gates the Coordinator split-pane UI (understanding + plan-of-work + conversation). Default false. */
+  osa_coordinator_enabled?: boolean
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlags> {

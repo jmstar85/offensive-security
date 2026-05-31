@@ -17,6 +17,7 @@ import Workflows from './pages/Workflows'
 import FlowPage from './pages/FlowPage'
 import FlowIndex from './pages/FlowIndex'
 import CredentialsPage from './pages/CredentialsPage'
+import CoordinatorPage from './pages/CoordinatorPage'
 import OAuthCallback from './pages/OAuthCallback'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/projects/:id/dashboard" element={<Shell><InteractionDashboard /></Shell>} />
         <Route path="/sessions/:id/dashboard" element={<Shell><InteractionDashboard /></Shell>} />
         <Route path="/credentials" element={<Shell><CredentialsPage /></Shell>} />
+        <Route path="/coordinator/:sessionId" element={<Shell><CoordinatorPage /></Shell>} />
         <Route path="/auth/oauth/callback" element={<OAuthCallback />} />
         <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

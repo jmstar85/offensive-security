@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, FolderKanban, Bot, GitBranch, Terminal,
   FileText, Activity, Key, LogOut, ChevronLeft, Search, X,
-  PanelsLeftRight,
+  PanelsLeftRight, RadioTower,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ThemeToggle } from "../ThemeToggle";
@@ -24,6 +24,7 @@ const BASE_NAV_ITEMS = [
 const FLOW_NAV_ITEM = { to: "/flow", icon: PanelsLeftRight, label: "Flow Console" };
 
 const CREDENTIALS_NAV_ITEM = { to: "/credentials", icon: Key, label: "Credentials" };
+const COORDINATOR_NAV_ITEM = { to: "/sessions", icon: RadioTower, label: "Coordinator" };
 
 interface Props {
   children: React.ReactNode;
@@ -43,6 +44,7 @@ export function SidebarShell({ children }: Props) {
     ...(flags?.osa_flow_ui_enabled ? [FLOW_NAV_ITEM] : []),
     ...BASE_NAV_ITEMS,
     ...(flags?.osa_multi_provider_llm ? [CREDENTIALS_NAV_ITEM] : []),
+    ...(flags?.osa_coordinator_enabled ? [COORDINATOR_NAV_ITEM] : []),
   ];
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
