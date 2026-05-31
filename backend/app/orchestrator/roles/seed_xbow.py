@@ -45,6 +45,7 @@ class SessionManagementAgent(Role):
     async def run(self, *, performer: Any, context: dict[str, Any]) -> RoleResult:
         vector = context.get("attack_vector", AttackVector.UNKNOWN)
         return RoleResult(
+            role_name=self.slug,
             messages=[{"role": "assistant", "content": f"session_management_agent: vector={vector}"}],
             finished=False,
         )
@@ -58,6 +59,7 @@ class DiscoveryAgent(Role):
         vector = context.get("attack_vector", AttackVector.UNKNOWN)
         palette = vector_to_tool_palette.get(vector, [])
         return RoleResult(
+            role_name=self.slug,
             messages=[{"role": "assistant", "content": f"discovery_agent palette={palette}"}],
             finished=False,
         )
@@ -68,9 +70,32 @@ class AttackAgent(Role):
     name = "attack_agent"
 
     async def run(self, *, performer: Any, context: dict[str, Any]) -> RoleResult:
+        from app.core.config import settings
         vector = context.get("attack_vector", AttackVector.UNKNOWN)
+
+        # When OSA_TRAFFIC_VIA_MITM is on, AttackAgent egress goes through
+        # the mitmproxy sidecar — the proxy address is published via
+        # OSA_MITM_PROXY_URL (compose env). DiscoveryAgent + SessionManagement
+        # are intentionally NOT routed (recon traffic stays direct so the
+        # MITM addons don't drown in noise). This is gated to Attack-family
+        # only.
+        egress_via_mitm = bool(settings.osa_traffic_via_mitm)
+        proxy_url = None
+        if egress_via_mitm:
+            import os
+            proxy_url = os.environ.get("OSA_MITM_PROXY_URL", "http://mitmproxy:8080")
+            context["_attack_agent_egress_proxy"] = proxy_url
+
         return RoleResult(
-            messages=[{"role": "assistant", "content": f"attack_agent vector={vector}"}],
+            role_name=self.slug,
+            messages=[{
+                "role": "assistant",
+                "content": (
+                    f"attack_agent vector={vector} "
+                    f"egress_via_mitm={egress_via_mitm} "
+                    f"proxy={proxy_url or 'direct'}"
+                ),
+            }],
             finished=False,
         )
 

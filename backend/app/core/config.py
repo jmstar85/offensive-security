@@ -125,6 +125,14 @@ class Settings(BaseSettings):
     osa_coordinator_enabled: bool = False
     osa_coordinator_replay_enabled: bool = False
 
+    # Coordinator iteration caps
+    max_coordinator_iterations: int = 8
+    max_coordinator_wall_clock_seconds: int = 600
+    max_coordinator_total_tokens: int = 200_000
+
+    # MITM traffic routing flag (default OFF; gates AttackAgent egress via mitmproxy sidecar)
+    osa_traffic_via_mitm: bool = False
+
     # OAuth redirect URI for LLM provider OAuth flows
     oauth_redirect_uri: str = "http://localhost:8000/api/v1/auth/llm-providers/oauth/callback"
 
