@@ -19,6 +19,8 @@ export interface FeatureFlags {
   osa_multi_provider_llm?: boolean
   /** Gates the Coordinator split-pane UI (understanding + plan-of-work + conversation). Default false. */
   osa_coordinator_enabled?: boolean
+  /** Gates AgentFamilyTree UI and family-spawning API surface. Default false. */
+  osa_xbow_families_enabled?: boolean
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlags> {

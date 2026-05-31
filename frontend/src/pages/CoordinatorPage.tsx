@@ -4,6 +4,7 @@ import { getMe } from "../api/client";
 import { useFeatureFlags } from "../hooks/useFeatureFlags";
 import { UnderstandingPanel } from "../components/coordinator/UnderstandingPanel";
 import { PlanOfWorkPanel } from "../components/coordinator/PlanOfWorkPanel";
+import { AgentFamilyTree } from "../components/coordinator/AgentFamilyTree";
 import { ConversationTab } from "../components/coordinator/ConversationTab";
 import { RawConversationTab } from "../components/coordinator/RawConversationTab";
 
@@ -56,6 +57,7 @@ export default function CoordinatorPage() {
         <div className="w-80 flex-shrink-0 border-r border-border overflow-y-auto p-4 space-y-4">
           <UnderstandingPanel sessionId={sessionId} />
           <PlanOfWorkPanel sessionId={sessionId} />
+          <AgentFamilyTree sessionId={sessionId} />
         </div>
 
         {/* Right pane */}
