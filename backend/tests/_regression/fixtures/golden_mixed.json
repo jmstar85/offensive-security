@@ -1,0 +1,61 @@
+{
+  "_anchor_sha": "b954060",
+  "rows": [
+    {
+      "action": "session.created",
+      "target_entity": "session",
+      "target_id": "c3d4e5f6-0001-0001-0001-000000000001",
+      "details_json": {"session_type": "mixed", "user_id": "u-0002", "workflow_id": "wf-0002"},
+      "timestamp": "2026-05-31T12:00:00.000Z"
+    },
+    {
+      "action": "plan.draft",
+      "target_entity": "plan",
+      "target_id": "c3d4e5f6-0002-0002-0002-000000000002",
+      "details_json": {"step_count": 5, "tools": ["nmap", "nikto"]},
+      "timestamp": "2026-05-31T12:00:01.000Z"
+    },
+    {
+      "action": "plan.approved",
+      "target_entity": "plan",
+      "target_id": "c3d4e5f6-0002-0002-0002-000000000002",
+      "details_json": {"approval_flags": {"approved_active_recon": true}, "approved_by": "user"},
+      "timestamp": "2026-05-31T12:00:04.000Z"
+    },
+    {
+      "action": "plan_loaded_from_workflow",
+      "target_entity": "plan",
+      "target_id": "c3d4e5f6-0003-0003-0003-000000000003",
+      "details_json": {"workflow_id": "wf-0002", "step_count": 2},
+      "timestamp": "2026-05-31T12:00:04.500Z"
+    },
+    {
+      "action": "steps_blocked",
+      "target_entity": "plan_step",
+      "target_id": "c3d4e5f6-0004-0004-0004-000000000004",
+      "details_json": {"tool": "kali_sqlmap", "reason": "tier_band_gate", "step_index": 3},
+      "timestamp": "2026-05-31T12:00:05.000Z"
+    },
+    {
+      "action": "kali_exec.filter_plan_steps_block",
+      "target_entity": "plan_step",
+      "target_id": "c3d4e5f6-0004-0004-0004-000000000004",
+      "details_json": {"blocked_tool": "kali_sqlmap", "gate": "tier_band", "allowed_tier": "passive"},
+      "timestamp": "2026-05-31T12:00:05.100Z"
+    },
+    {
+      "action": "session.executing",
+      "target_entity": "session",
+      "target_id": "c3d4e5f6-0001-0001-0001-000000000001",
+      "details_json": {"steps_queued": 4},
+      "timestamp": "2026-05-31T12:00:06.000Z"
+    },
+    {
+      "action": "session.completed",
+      "target_entity": "session",
+      "target_id": "c3d4e5f6-0001-0001-0001-000000000001",
+      "details_json": {"status": "completed", "steps_run": 4, "steps_blocked": 1},
+      "timestamp": "2026-05-31T12:01:00.000Z"
+    }
+  ]
+}

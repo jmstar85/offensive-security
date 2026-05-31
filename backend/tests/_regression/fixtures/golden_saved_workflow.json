@@ -1,0 +1,33 @@
+{
+  "_anchor_sha": "b954060",
+  "rows": [
+    {
+      "action": "session.created",
+      "target_entity": "session",
+      "target_id": "b2c3d4e5-0001-0001-0001-000000000001",
+      "details_json": {"session_type": "saved_workflow_replay", "workflow_id": "wf-0001"},
+      "timestamp": "2026-05-31T11:00:00.000Z"
+    },
+    {
+      "action": "plan_loaded_from_workflow",
+      "target_entity": "plan",
+      "target_id": "b2c3d4e5-0002-0002-0002-000000000002",
+      "details_json": {"workflow_id": "wf-0001", "step_count": 3},
+      "timestamp": "2026-05-31T11:00:00.500Z"
+    },
+    {
+      "action": "session.executing",
+      "target_entity": "session",
+      "target_id": "b2c3d4e5-0001-0001-0001-000000000001",
+      "details_json": {"steps_queued": 3},
+      "timestamp": "2026-05-31T11:00:01.000Z"
+    },
+    {
+      "action": "session.completed",
+      "target_entity": "session",
+      "target_id": "b2c3d4e5-0001-0001-0001-000000000001",
+      "details_json": {"status": "completed", "steps_run": 3},
+      "timestamp": "2026-05-31T11:00:45.000Z"
+    }
+  ]
+}

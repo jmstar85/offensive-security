@@ -16,3 +16,16 @@ backend/app/safety/kali_allowlist.py        @security-reviewer
 
 # Socket-proxy image-regex middleware (F3 mitigation)
 backend/app/infra/socket_proxy_filter.py    @security-reviewer
+
+# W0/PR0.3 — RALPLAN-DR v1.1 safety surface extension
+backend/app/safety/**                          @security-reviewer
+backend/app/agents/backends/**                 @security-reviewer
+backend/app/roles/seed_xbow.py                 @security-reviewer
+backend/app/orchestrator/coordinator.py        @security-reviewer
+backend/app/orchestrator/families/**           @security-reviewer
+backend/app/safety/conversation_scrubber.py    @security-reviewer
+backend/app/safety/audit_kali.py               @security-reviewer
+backend/app/core/feature_flag_validator.py     @security-reviewer
+docker/mitmproxy/Dockerfile                    @security-reviewer
+docker/headless-browser/Dockerfile             @security-reviewer
+docker/interactsh/Dockerfile                   @security-reviewer

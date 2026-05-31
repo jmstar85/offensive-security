@@ -1,0 +1,47 @@
+{
+  "_anchor_sha": "b954060",
+  "rows": [
+    {
+      "action": "session.created",
+      "target_entity": "session",
+      "target_id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "details_json": {"session_type": "fresh_plan", "user_id": "u-0001"},
+      "timestamp": "2026-05-31T10:00:00.000Z"
+    },
+    {
+      "action": "plan.draft",
+      "target_entity": "plan",
+      "target_id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "details_json": {"step_count": 4, "tools": ["nmap", "sqlmap", "nikto"]},
+      "timestamp": "2026-05-31T10:00:01.000Z"
+    },
+    {
+      "action": "plan.approved",
+      "target_entity": "plan",
+      "target_id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "details_json": {"approval_flags": {"approved_active_recon": true}, "approved_by": "user"},
+      "timestamp": "2026-05-31T10:00:05.000Z"
+    },
+    {
+      "action": "steps_blocked",
+      "target_entity": "plan_step",
+      "target_id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "details_json": {"tool": "kali_sqlmap", "reason": "tier_band_gate", "step_index": 2},
+      "timestamp": "2026-05-31T10:00:06.000Z"
+    },
+    {
+      "action": "kali_exec.filter_plan_steps_block",
+      "target_entity": "plan_step",
+      "target_id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "details_json": {"blocked_tool": "kali_sqlmap", "gate": "tier_band", "allowed_tier": "passive"},
+      "timestamp": "2026-05-31T10:00:06.100Z"
+    },
+    {
+      "action": "session.completed",
+      "target_entity": "session",
+      "target_id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "details_json": {"status": "completed", "steps_run": 2, "steps_blocked": 1},
+      "timestamp": "2026-05-31T10:00:30.000Z"
+    }
+  ]
+}
