@@ -65,7 +65,10 @@ export default function Admin() {
     }
   }
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleRoleChange = async (userId: string, newRole: string, userEmail: string) => {
+    if (newRole === 'team_admin') {
+      if (!confirm(`Grant TEAM_ADMIN role to ${userEmail}? This allows raw_conversation subscription.`)) return
+    }
     try {
       await updateUserRole(userId, newRole)
       await loadData()
@@ -161,12 +164,13 @@ export default function Admin() {
                   <td className="px-4 py-3">
                     <select
                       value={u.role}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value, u.email)}
                       className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
                       disabled={!u.is_active}
                     >
                       <option value="admin">admin</option>
                       <option value="member">member</option>
+                      <option value="team_admin">team_admin</option>
                     </select>
                   </td>
                   <td className="px-4 py-3">

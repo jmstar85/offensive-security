@@ -11,6 +11,7 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     MEMBER = "member"
+    TEAM_ADMIN = "team_admin"
 
 
 class Team(Base, UUIDMixin, TimestampMixin):

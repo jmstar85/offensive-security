@@ -72,10 +72,10 @@ async def update_user_role(
     # Audit log
     db.add(AuditLog(
         actor_id=admin.id,
-        action="user_role_changed",
+        action="user.role_granted",
         target_entity="user",
         target_id=str(user_id),
-        details_json={"old_role": old_role, "new_role": body.role.value},
+        details_json={"new_role": body.role.value, "previous_role": old_role},
     ))
 
     return UserResponse(
