@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from app.api.v1 import agents, auth, projects, sessions, reports, audit_logs, workflows
+from app.api.v1 import credentials as credentials_router
 from app.api.v1 import users as users_router
 from app.api.v1 import domain_agents as domain_agents_router
 from app.api.v1 import pentest_sessions as pentest_sessions_router
@@ -120,6 +121,11 @@ app.include_router(
     feature_flags_router.router,
     prefix=settings.api_prefix,
     tags=["feature-flags"],
+)
+app.include_router(
+    credentials_router.router,
+    prefix=settings.api_prefix,
+    tags=["credentials"],
 )
 
 # WebSocket — mounted under the same /api/v1 prefix as REST so the
