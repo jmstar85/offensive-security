@@ -101,3 +101,8 @@ class ModelClient:
         raise ModelUnreachable(
             f"Anthropic API unreachable after {self._max_attempts} attempts: {last_exc!r}"
         )
+
+
+# PR1.1: ModelClient is the legacy single-provider client; new code should use
+# app.orchestrator.llm.LLMRouter. ModelClient remains the default for paths
+# that haven't been flag-gated to multi-provider yet.
