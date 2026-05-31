@@ -1,15 +1,18 @@
-"""Executor topic-tagged publish regression test (v4.0 P4 gap-fill 3/3).
+"""Executor topic-tagged publish regression test (v4.0 P4 gap-fill 3/3,
+updated v1.1-#1 to cover the second `agent_failed` branch added when
+shim_block was promoted to a specific SafetyViolation catch).
 
-Verifies the four `event_bus.publish` call sites in `executor.py` route to
+Verifies the five `event_bus.publish` call sites in `executor.py` route to
 the correct UI panel topic per `.omc/research/pentagi-reference.md §4`:
 
-| Source event           | Topic       | UI panel       |
-|------------------------|-------------|----------------|
-| `agent_started`        | `tasks`     | Tasks tab      |
-| adapter `event.log`    | `terminal`  | Terminal tab   |
-| adapter `event.status` | `agents`    | Agents tab     |
-| `agent_failed`         | `tasks`     | Tasks tab      |
-| `agent_completed`      | `tasks`     | Tasks tab      |
+| Source event                         | Topic       | UI panel       |
+|--------------------------------------|-------------|----------------|
+| `agent_started`                      | `tasks`     | Tasks tab      |
+| adapter `event.log`                  | `terminal`  | Terminal tab   |
+| adapter `event.status`               | `agents`    | Agents tab     |
+| `agent_failed` (shim_block branch)   | `tasks`     | Tasks tab      |
+| `agent_failed` (generic branch)      | `tasks`     | Tasks tab      |
+| `agent_completed`                    | `tasks`     | Tasks tab      |
 
 If a future refactor accidentally drops a topic kwarg, a panel will go dark
 under flag-on operation — this test prevents that regression.
@@ -48,10 +51,10 @@ def _publish_sites() -> list[str]:
     return sites
 
 
-def test_executor_has_four_publish_sites():
+def test_executor_has_five_publish_sites():
     sites = _publish_sites()
-    assert len(sites) == 4, (
-        f"Expected 4 publish sites in executor.py; found {len(sites)}. "
+    assert len(sites) == 5, (
+        f"Expected 5 publish sites in executor.py; found {len(sites)}. "
         "If you added or removed one, update this regression test."
     )
 
@@ -72,7 +75,9 @@ def test_agent_lifecycle_events_route_to_tasks_topic():
         b for b in sites
         if any(t in b for t in ('"agent_started"', '"agent_failed"', '"agent_completed"'))
     ]
-    assert len(lifecycle) == 3, "Expected 3 lifecycle publish sites"
+    # v1.1-#1 added a second `agent_failed` site for the SafetyViolation
+    # (shim_block) branch — both still route to the Tasks tab.
+    assert len(lifecycle) == 4, "Expected 4 lifecycle publish sites (incl. 2 agent_failed)"
     for body in lifecycle:
         assert 'topic="tasks"' in body, (
             f"Lifecycle event must route to Tasks tab; got: {body[:160]!r}"

@@ -20,13 +20,16 @@ async def test_feature_flag_endpoint_returns_current_flag_state(monkeypatch):
 
     # Force flag ON for this test.
     monkeypatch.setattr(config.settings, "osa_flow_ui_enabled", True)
+    monkeypatch.setattr(config.settings, "osa_kali_backend_enabled", False)
     response = await feature_flags.get_feature_flags()
-    assert response == {"osa_flow_ui_enabled": True}
+    assert response["osa_flow_ui_enabled"] is True
+    assert response["osa_kali_backend_enabled"] is False
 
     # And OFF.
     monkeypatch.setattr(config.settings, "osa_flow_ui_enabled", False)
     response = await feature_flags.get_feature_flags()
-    assert response == {"osa_flow_ui_enabled": False}
+    assert response["osa_flow_ui_enabled"] is False
+    assert response["osa_kali_backend_enabled"] is False
 
 
 def test_feature_flag_default_is_off():
