@@ -18,8 +18,10 @@ FILTER = (
     / "socket_proxy_filter.py"
 )
 
-# v1.1 pin: only osa-kali images are creatable through the proxy.
-EXPECTED_REGEX_LITERAL = r"^osa-kali(?:[:@].+)?$"
+# W3 pin: osa-kali, osa-mitmproxy, osa-headless-browser, osa-interactsh allowed.
+EXPECTED_REGEX_LITERAL = r"^(osa-kali|osa-mitmproxy|osa-headless-browser|osa-interactsh)(?:[:@].+)?$"
+
+_W3_NAMESPACES = frozenset(["osa-kali", "osa-mitmproxy", "osa-headless-browser", "osa-interactsh"])
 
 
 def _find_image_regex_compile_arg(tree: ast.AST) -> str | None:
@@ -39,7 +41,7 @@ def _find_image_regex_compile_arg(tree: ast.AST) -> str | None:
     return None
 
 
-def test_image_regex_pinned_to_osa_kali_only():
+def test_image_regex_pinned_to_w3_namespaces():
     assert FILTER.exists(), f"missing socket_proxy_filter at {FILTER}"
     tree = ast.parse(FILTER.read_text(encoding="utf-8"))
     actual = _find_image_regex_compile_arg(tree)
@@ -50,6 +52,21 @@ def test_image_regex_pinned_to_osa_kali_only():
         f"IMAGE_REGEX literal changed.\n"
         f"  expected: {EXPECTED_REGEX_LITERAL!r}\n"
         f"  actual:   {actual!r}\n"
-        f"If you are adding a sidecar namespace (W3) update BOTH the constant "
+        f"If you are adding a sidecar namespace update BOTH the constant "
         f"AND this test under @security-reviewer CODEOWNERS."
+    )
+
+
+def test_image_regex_lists_four_w3_namespaces():
+    assert FILTER.exists(), f"missing socket_proxy_filter at {FILTER}"
+    tree = ast.parse(FILTER.read_text(encoding="utf-8"))
+    actual = _find_image_regex_compile_arg(tree)
+    assert actual is not None, "IMAGE_REGEX not found"
+    # Extract the alternation group — everything inside the first (...)
+    import re
+    m = re.match(r"^\^\(([^)]+)\)", actual)
+    assert m is not None, f"Expected alternation group at start of regex, got: {actual!r}"
+    found = frozenset(m.group(1).split("|"))
+    assert found == _W3_NAMESPACES, (
+        f"Expected exactly 4 W3 namespaces {_W3_NAMESPACES}, got {found}"
     )

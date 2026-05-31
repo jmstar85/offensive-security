@@ -44,6 +44,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - osa-net
 
   # Kali coexistence (PR-7) image-regex middleware in front of the tecnativa
   # proxy. KaliBackend's docker client targets THIS service; the middleware
@@ -104,5 +106,43 @@ services:
     depends_on:
       - backend
 
+  mitmproxy:
+    build:
+      context: ./docker/mitmproxy
+      args:
+        OSA_MITMPROXY_DIGEST: ${OSA_MITMPROXY_DIGEST}
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      - backend
+    networks:
+      - osa-net
+
+  headless-browser:
+    build:
+      context: ./docker/headless-browser
+      args:
+        OSA_HEADLESS_DIGEST: ${OSA_HEADLESS_DIGEST}
+    depends_on:
+      - backend
+    networks:
+      - osa-net
+
+  interactsh:
+    build:
+      context: ./docker/interactsh
+      args:
+        OSA_INTERACTSH_DIGEST: ${OSA_INTERACTSH_DIGEST}
+    networks:
+      - osa-oob-net
+
 volumes:
   postgres_data:
+
+networks:
+  osa-net:
+    driver: bridge
+  osa-oob-net:
+    driver: bridge
+    internal: false

@@ -88,14 +88,24 @@ def test_tecnativa_proxy_digest_pinned(compose):
     )
 
 
-def test_baseline_network_membership_compose_v1_1(compose):
+def test_w3_network_membership(compose):
     services = compose.get("services", {})
     backend_svc = services.get("backend", {})
-    assert "networks" not in backend_svc, (
-        "At v1.1 baseline, backend service must NOT have a 'networks:' key "
-        "(uses default network; osa-oob-net is added in W3)"
+    backend_nets = backend_svc.get("networks", [])
+    assert "osa-net" in backend_nets, "backend must be on osa-net"
+    interactsh_svc = services.get("interactsh", {})
+    interactsh_nets = interactsh_svc.get("networks", [])
+    assert "osa-oob-net" in interactsh_nets, "interactsh must be on osa-oob-net"
+    assert "osa-net" not in interactsh_nets, (
+        "interactsh must NOT be on osa-net (MF6 OOB isolation)"
     )
     top_level_networks = compose.get("networks", {})
-    assert "osa-oob-net" not in top_level_networks, (
-        "osa-oob-net must not exist yet at v1.1 baseline (added in W3)"
-    )
+    assert "osa-net" in top_level_networks, "osa-net must be defined top-level"
+    assert "osa-oob-net" in top_level_networks, "osa-oob-net must be defined top-level"
+
+
+def test_sidecar_services_present(compose):
+    services = compose.get("services", {})
+    assert "mitmproxy" in services, "mitmproxy service must be present"
+    assert "headless-browser" in services, "headless-browser service must be present"
+    assert "interactsh" in services, "interactsh service must be present"

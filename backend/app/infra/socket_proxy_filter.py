@@ -26,8 +26,8 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-IMAGE_REGEX = re.compile(r"^osa-kali(?:[:@].+)?$")
-"""Only osa-kali images may be created through this middleware."""
+IMAGE_REGEX = re.compile(r"^(osa-kali|osa-mitmproxy|osa-headless-browser|osa-interactsh)(?:[:@].+)?$")
+"""Only osa-kali, osa-mitmproxy, osa-headless-browser, osa-interactsh images may be created through this middleware."""
 
 CREATE_PATH = "/containers/create"
 
