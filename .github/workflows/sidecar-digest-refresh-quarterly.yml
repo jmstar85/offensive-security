@@ -1,0 +1,48 @@
+name: Sidecar Image Digest Refresh (Quarterly)
+on:
+  schedule:
+    - cron: "0 4 1 1,4,7,10 *"
+  workflow_dispatch:
+    inputs:
+      sidecar:
+        description: "Which sidecar to refresh (mitmproxy|headless-browser|interactsh|all)"
+        required: false
+        default: "all"
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      matrix:
+        sidecar:
+          - { name: mitmproxy, image: "mitmproxy/mitmproxy", env: OSA_MITMPROXY_DIGEST }
+          - { name: headless-browser, image: "mcr.microsoft.com/playwright", env: OSA_HEADLESS_DIGEST }
+          - { name: interactsh, image: "projectdiscovery/interactsh-server", env: OSA_INTERACTSH_DIGEST }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve latest digest for ${{ matrix.sidecar.image }}
+        id: resolve
+        run: |
+          docker pull ${{ matrix.sidecar.image }}:latest
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ matrix.sidecar.image }}:latest | cut -d@ -f2)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+      - name: Verify digest format
+        run: |
+          [[ "${{ steps.resolve.outputs.digest }}" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+      - name: Open digest-refresh PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/sidecar-digest-refresh-${{ matrix.sidecar.name }}-${{ github.run_number }}
+          title: "chore(infra): quarterly digest refresh for osa-${{ matrix.sidecar.name }}"
+          body: |
+            Quarterly digest refresh per PR5.2.
+
+            - Sidecar: ${{ matrix.sidecar.name }}
+            - Upstream: ${{ matrix.sidecar.image }}
+            - New digest: ${{ steps.resolve.outputs.digest }}
+            - Env var: ${{ matrix.sidecar.env }}
+
+            Reviewer must verify: image-regex unchanged, no extra published ports, SBOM diff inspected.
+          commit-message: "chore(infra): refresh ${{ matrix.sidecar.env }} to ${{ steps.resolve.outputs.digest }}"
