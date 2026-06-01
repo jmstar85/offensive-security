@@ -24,7 +24,13 @@ const BASE_NAV_ITEMS = [
 const FLOW_NAV_ITEM = { to: "/flow", icon: PanelsLeftRight, label: "Flow Console" };
 
 const CREDENTIALS_NAV_ITEM = { to: "/credentials", icon: Key, label: "Credentials" };
-const COORDINATOR_NAV_ITEM = { to: "/sessions", icon: RadioTower, label: "Coordinator" };
+
+// Coordinator is session-scoped. Extract the active session id from any
+// session-shaped route (/pentest-sessions/:id, /flow/:id,
+// /sessions/:id/{monitor,dashboard}, /coordinator/:id). Requires a uuid-ish
+// segment so literals like /pentest-sessions/new never match.
+const SESSION_ID_RE =
+  /\/(?:pentest-sessions|flow|coordinator)\/([0-9a-fA-F-]{8,})|\/sessions\/([0-9a-fA-F-]{8,})\//;
 
 interface Props {
   children: React.ReactNode;
@@ -38,13 +44,23 @@ export function SidebarShell({ children }: Props) {
   const [query, setQuery] = useState("");
   const flags = useFeatureFlags();
 
+  // Coordinator nav only appears when viewing a specific session, and links
+  // to that session's coordinator page (gap #5 fix — the old static item
+  // pointed at /sessions and could never reach /coordinator/:sessionId).
+  const sessionMatch = location.pathname.match(SESSION_ID_RE);
+  const activeSessionId = sessionMatch?.[1] ?? sessionMatch?.[2];
+  const coordinatorItem = activeSessionId
+    ? { to: `/coordinator/${activeSessionId}`, icon: RadioTower, label: "Coordinator" }
+    : null;
+
   // Dynamic nav list — prepend Flow Console when v4.0 flag is ON; append
-  // Credentials when osa_multi_provider_llm is ON.
+  // Credentials when osa_multi_provider_llm is ON; append Coordinator when
+  // the flag is ON AND a session is in scope.
   const NAV_ITEMS = [
     ...(flags?.osa_flow_ui_enabled ? [FLOW_NAV_ITEM] : []),
     ...BASE_NAV_ITEMS,
     ...(flags?.osa_multi_provider_llm ? [CREDENTIALS_NAV_ITEM] : []),
-    ...(flags?.osa_coordinator_enabled ? [COORDINATOR_NAV_ITEM] : []),
+    ...(flags?.osa_coordinator_enabled && coordinatorItem ? [coordinatorItem] : []),
   ];
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {

@@ -124,6 +124,18 @@ class Settings(BaseSettings):
     # Coordinator service flags (default OFF)
     osa_coordinator_enabled: bool = False
     osa_coordinator_replay_enabled: bool = False
+    # Demo/no-LLM lane: when True, the saved-workflow path builds the
+    # deterministic UnderstandingOfTarget + PlanOfWork directly (bypassing
+    # CoordinatorService.run's ReplayLaneViolation guard) so the Coordinator
+    # panels populate and per-phase AgentFamilyInstance rows materialize on a
+    # replay. Default OFF keeps the v1.1 byte-identical replay untouched.
+    osa_coordinator_populate_on_replay: bool = False
+
+    # Sidecar feature flags (W3) — UI gating only, sidecars are managed by
+    # docker-compose and IMAGE_REGEX, not by these booleans
+    osa_mitm_proxy_enabled: bool = False
+    osa_headless_browser_enabled: bool = False
+    osa_collaborator_enabled: bool = False
 
     # Coordinator iteration caps
     max_coordinator_iterations: int = 8

@@ -139,6 +139,84 @@ class OrchestratorService:
                 actor_id=str(actor_id), target_entity="pentest_session",
                 target_id=str(session_id), details={"lane": lane, "reason": "no_opt_in"})
 
+        # 4.6 Demo/no-LLM lane: build the deterministic UnderstandingOfTarget +
+        # PlanOfWork directly (sidestepping CoordinatorService.run's
+        # ReplayLaneViolation guard) so the Coordinator panels populate on a
+        # saved-workflow replay, and materialize one root AgentFamilyInstance
+        # per ordered phase so the AgentFamilyTree shows the spawned families.
+        # Double flag-gated — the default-OFF config and the v1.1
+        # byte-identical replay never enter this branch.
+        if (
+            coordinator_enabled
+            and lane == "saved_workflow"
+            and getattr(settings, "osa_coordinator_populate_on_replay", False)
+        ):
+            from app.orchestrator.coordinator import (
+                PlanOfWorkBuilder,
+                UnderstandingBuilder,
+            )
+
+            understanding = await UnderstandingBuilder().build(prompt, target)
+            plan_of_work = await PlanOfWorkBuilder().build(understanding, prompt)
+            next_revision = (session.coordinator_revision_no or 0) + 1
+            await self._db.execute(
+                update(PentestSession)
+                .where(PentestSession.id == session_id)
+                .values(
+                    understanding_json=understanding.model_dump(),
+                    plan_of_work_json=plan_of_work.model_dump(),
+                    coordinator_revision_no=next_revision,
+                )
+            )
+            await self._db.commit()
+            await event_bus.publish(str(session_id), {
+                "type": "understanding_built",
+                "session_id": str(session_id),
+                "understanding": understanding.model_dump(),
+            }, topic="coordinator")
+            await event_bus.publish(str(session_id), {
+                "type": "plan_of_work_built",
+                "session_id": str(session_id),
+                "plan_of_work": plan_of_work.model_dump(),
+            }, topic="coordinator")
+            await self._audit.log(
+                action="coordinator.populated_on_replay",
+                actor_id=str(actor_id),
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"revision_no": next_revision},
+            )
+
+            # Materialize one root family per ordered phase. Idempotent: skip
+            # when rows already exist for this session (re-run safety).
+            if getattr(settings, "osa_xbow_families_enabled", False):
+                from app.models.agent_family import AgentFamilyInstance
+
+                existing = await self._db.execute(
+                    select(AgentFamilyInstance.id).where(
+                        AgentFamilyInstance.pentest_session_id == session_id
+                    )
+                )
+                if existing.first() is None:
+                    for phase in plan_of_work.ordered_phases:
+                        self._db.add(AgentFamilyInstance(
+                            pentest_session_id=session_id,
+                            family_kind=phase,
+                            parent_family_id=None,
+                            status="active",
+                            depth=0,
+                            max_depth=3,
+                            context_json={"phase": phase},
+                        ))
+                    await self._db.commit()
+                    await self._audit.log(
+                        action="coordinator.families_materialized",
+                        actor_id=str(actor_id),
+                        target_entity="pentest_session",
+                        target_id=str(session_id),
+                        details={"families": list(plan_of_work.ordered_phases)},
+                    )
+
         if session.plan_json:
             await event_bus.publish(str(session_id), {
                 "type": "session_update",

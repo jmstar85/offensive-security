@@ -81,6 +81,13 @@ async def create_session(
     await db.flush()
     session_id = session.id
 
+    # Commit BEFORE scheduling the background task. _run_orchestration opens a
+    # fresh DB session; without this commit it races the request-teardown
+    # commit and may read the row as None → silent no-op that leaves the
+    # session stuck in 'pending' forever. expire_on_commit=False (see
+    # core/database.py) keeps `session` usable for the response below.
+    await db.commit()
+
     # Launch orchestration in background
     background_tasks.add_task(_run_orchestration, session_id, body.prompt, str(current_user.id))
 

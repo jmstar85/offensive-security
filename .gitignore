@@ -40,3 +40,4 @@ postgres_data/
 *.pem
 *.key
 secrets/
+docker-compose.override.yml

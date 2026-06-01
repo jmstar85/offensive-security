@@ -30,4 +30,12 @@ async def get_feature_flags() -> dict[str, bool]:
     return {
         "osa_flow_ui_enabled": settings.osa_flow_ui_enabled,
         "osa_kali_backend_enabled": settings.osa_kali_backend_enabled,
+        # W1+W2+W3+W4 surface
+        "osa_multi_provider_llm": settings.osa_multi_provider_llm,
+        "osa_coordinator_enabled": settings.osa_coordinator_enabled,
+        "osa_xbow_families_enabled": settings.osa_xbow_families_enabled,
+        "osa_mitm_proxy_enabled": settings.osa_mitm_proxy_enabled,
+        "osa_headless_browser_enabled": settings.osa_headless_browser_enabled,
+        "osa_collaborator_enabled": settings.osa_collaborator_enabled,
+        "osa_traffic_via_mitm": settings.osa_traffic_via_mitm,
     }
