@@ -137,6 +137,15 @@ class Settings(BaseSettings):
     osa_headless_browser_enabled: bool = False
     osa_collaborator_enabled: bool = False
 
+    # Planner LLM provider for the fresh-plan lane (AttackPlanner). "anthropic"
+    # (default) uses ModelClient + the Anthropic API; "ollama" routes plan
+    # generation to a local Ollama server (no external API key required).
+    osa_llm_provider: str = "anthropic"
+    ollama_base_url: str = "http://host.docker.internal:11434"
+    ollama_model: str = "qwen3-14b-96k:latest"
+    ollama_temperature: float = 0.2
+    ollama_timeout_seconds: int = 300
+
     # Coordinator iteration caps
     max_coordinator_iterations: int = 8
     max_coordinator_wall_clock_seconds: int = 600

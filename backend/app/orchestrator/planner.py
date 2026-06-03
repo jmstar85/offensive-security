@@ -54,8 +54,22 @@ class AttackPlanner:
         model_id: ModelId | None = None,
         use_generator_role: bool = False,
     ) -> None:
-        self._client = model_client or ModelClient()
-        self._model_id = model_id  # None falls back to settings.anthropic_default_model_anthropic_id
+        # Provider selection (default "anthropic" keeps legacy behavior byte-
+        # identical). When osa_llm_provider="ollama" and no client is injected,
+        # plan generation is routed to a local Ollama server.
+        provider = getattr(settings, "osa_llm_provider", "anthropic")
+        if model_client is not None:
+            self._client = model_client
+            self._provider = "anthropic"
+        elif provider == "ollama":
+            from app.orchestrator.ollama_client import OllamaClient
+
+            self._client = OllamaClient()
+            self._provider = "ollama"
+        else:
+            self._client = ModelClient()
+            self._provider = "anthropic"
+        self._model_id = model_id  # None falls back to settings default
         self._use_generator_role = use_generator_role
 
     async def create_plan(self, prompt: str, target: dict) -> dict:
@@ -76,13 +90,16 @@ class AttackPlanner:
             f"Operator instructions: {prompt}\n\n"
             "Generate the attack plan JSON."
         )
-        model_anthropic_id = (
-            self._model_id.anthropic_id
-            if self._model_id is not None
-            else settings.anthropic_default_model_anthropic_id
-        )
+        if self._provider == "ollama":
+            model_resolved = settings.ollama_model
+        else:
+            model_resolved = (
+                self._model_id.anthropic_id
+                if self._model_id is not None
+                else settings.anthropic_default_model_anthropic_id
+            )
         response = await self._client.send(
-            model_id=model_anthropic_id,
+            model_id=model_resolved,
             messages=[{"role": "user", "content": user_message}],
             system=SYSTEM_PROMPT,
         )

@@ -126,6 +126,13 @@ class OrchestratorService:
                         fresh_plan_of_work=plan_of_work,
                         actor_id=str(actor_id),
                     )
+                # Materialize per-phase families so the AgentFamilyTree shows
+                # the spawned families on the LLM-driven fresh-plan lane too
+                # (flag-gated, idempotent).
+                if getattr(settings, "osa_xbow_families_enabled", False):
+                    await self._materialize_families(
+                        session_id, plan_of_work.ordered_phases, actor_id
+                    )
             except ReplayLaneViolation:
                 await self._audit.log(action="coordinator.skipped_for_replay_lane",
                     actor_id=str(actor_id), target_entity="pentest_session",
@@ -187,35 +194,11 @@ class OrchestratorService:
                 details={"revision_no": next_revision},
             )
 
-            # Materialize one root family per ordered phase. Idempotent: skip
-            # when rows already exist for this session (re-run safety).
+            # Materialize one root family per ordered phase (flag-gated, idempotent).
             if getattr(settings, "osa_xbow_families_enabled", False):
-                from app.models.agent_family import AgentFamilyInstance
-
-                existing = await self._db.execute(
-                    select(AgentFamilyInstance.id).where(
-                        AgentFamilyInstance.pentest_session_id == session_id
-                    )
+                await self._materialize_families(
+                    session_id, plan_of_work.ordered_phases, actor_id
                 )
-                if existing.first() is None:
-                    for phase in plan_of_work.ordered_phases:
-                        self._db.add(AgentFamilyInstance(
-                            pentest_session_id=session_id,
-                            family_kind=phase,
-                            parent_family_id=None,
-                            status="active",
-                            depth=0,
-                            max_depth=3,
-                            context_json={"phase": phase},
-                        ))
-                    await self._db.commit()
-                    await self._audit.log(
-                        action="coordinator.families_materialized",
-                        actor_id=str(actor_id),
-                        target_entity="pentest_session",
-                        target_id=str(session_id),
-                        details={"families": list(plan_of_work.ordered_phases)},
-                    )
 
         if session.plan_json:
             await event_bus.publish(str(session_id), {
@@ -362,6 +345,42 @@ class OrchestratorService:
             "status": "completed",
             "finding_count": len(findings),
         })
+
+    async def _materialize_families(
+        self, session_id: uuid.UUID, ordered_phases: list[str], actor_id: uuid.UUID
+    ) -> None:
+        """Insert one root AgentFamilyInstance per ordered phase.
+
+        Idempotent: no-ops when rows already exist for the session (re-run
+        safety). Drives the AgentFamilyTree panel.
+        """
+        from app.models.agent_family import AgentFamilyInstance
+
+        existing = await self._db.execute(
+            select(AgentFamilyInstance.id).where(
+                AgentFamilyInstance.pentest_session_id == session_id
+            )
+        )
+        if existing.first() is not None:
+            return
+        for phase in ordered_phases:
+            self._db.add(AgentFamilyInstance(
+                pentest_session_id=session_id,
+                family_kind=phase,
+                parent_family_id=None,
+                status="active",
+                depth=0,
+                max_depth=3,
+                context_json={"phase": phase},
+            ))
+        await self._db.commit()
+        await self._audit.log(
+            action="coordinator.families_materialized",
+            actor_id=str(actor_id),
+            target_entity="pentest_session",
+            target_id=str(session_id),
+            details={"families": list(ordered_phases)},
+        )
 
     async def _fail(self, session_id: uuid.UUID, reason: str) -> None:
         await self._db.execute(
