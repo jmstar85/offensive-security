@@ -37,7 +37,7 @@ export function useTopicWebSocket(
     if (!sessionId || !topic) return
     const token = localStorage.getItem('token') ?? ''
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${window.location.host}/ws/sessions/${sessionId}?token=${token}&topics=${encodeURIComponent(topic)}`
+    const url = `${proto}://${window.location.host}/api/v1/ws/sessions/${sessionId}?token=${token}&topics=${encodeURIComponent(topic)}`
     const ws = new WebSocket(url)
     wsRef.current = ws
 
