@@ -104,11 +104,66 @@ class PlanOfWorkBuilder:
         )
 
 
+class LLMUnderstandingBuilder:
+    """LLM-driven UnderstandingOfTarget from the interview transcript (PR5 / C1).
+
+    When an Ollama client is available the Coordinator reads the operator interview
+    transcript + locked target scope and produces a structured understanding —
+    instead of the deterministic keyword/TLD heuristics. Returns ``None`` to signal
+    the caller should fall back to the deterministic builder (no client, model
+    unreachable, or unparseable output).
+    """
+
+    SYSTEM_PROMPT = """\
+You are the Coordinator of the OSA penetration-testing platform. Read the operator
+interview transcript and the locked target scope, then output ONLY a JSON object:
+{"target_kind": "web_app|network|cloud|mobile|unknown",
+ "detected_stack": ["..."], "entry_points": ["..."], "constraints": ["..."]}.
+Ground every field in the transcript + target. Never list hosts outside the scope."""
+
+    async def build(
+        self, transcript: list[dict], target: dict, client: Any
+    ) -> "UnderstandingOfTarget | None":
+        import json
+
+        from app.orchestrator.model_client import ModelUnreachable
+        from app.orchestrator.roles.llm_provider import resolve_role_send_model
+
+        convo = "\n".join(
+            f"{m.get('role', '?')}: {m.get('content', '')}" for m in transcript
+        )
+        user = (
+            f"Target scope: {json.dumps(target)}\n\n"
+            f"Interview transcript:\n{convo}\n\n"
+            "Produce the UnderstandingOfTarget JSON."
+        )
+        try:
+            resp = await client.send(
+                model_id=resolve_role_send_model(None),
+                messages=[{"role": "user", "content": user}],
+                system=self.SYSTEM_PROMPT,
+            )
+            data = json.loads((resp.text or "{}").strip())
+        except (ModelUnreachable, json.JSONDecodeError, TypeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        fallback_entries = list(target.get("domains", [])) + list(target.get("ip_ranges", []))
+        return UnderstandingOfTarget(
+            target_kind=str(data.get("target_kind", "unknown")),
+            detected_stack=[str(s) for s in (data.get("detected_stack") or [])],
+            entry_points=[str(e) for e in (data.get("entry_points") or [])] or fallback_entries,
+            constraints=[str(c) for c in (data.get("constraints") or [])],
+            raw_signals={"source": "llm_interview", "transcript_turns": len(transcript)},
+        )
+
+
 class CoordinatorService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._u = UnderstandingBuilder()
         self._p = PlanOfWorkBuilder()
+        self._llm_u = LLMUnderstandingBuilder()
 
     async def run(
         self,
@@ -178,6 +233,51 @@ class CoordinatorService:
         )
 
         return (understanding, plan_of_work)
+
+    async def build_understanding(
+        self,
+        *,
+        prompt: str,
+        target: dict,
+        transcript: list[dict] | None = None,
+        model_client: Any = None,
+    ) -> UnderstandingOfTarget:
+        """Build the UnderstandingOfTarget.
+
+        LLM-driven from the interview transcript when a client is resolvable
+        (injected, or Ollama via ``osa_llm_provider="ollama"``); the deterministic
+        ``UnderstandingBuilder`` is the fallback (keeps replay byte-identical when no
+        client / no transcript is available).
+        """
+        from app.orchestrator.roles.llm_provider import resolve_role_client
+
+        client = resolve_role_client(model_client)
+        if client is not None and transcript:
+            llm = await self._llm_u.build(transcript, target, client)
+            if llm is not None:
+                return llm
+        return await self._u.build(prompt, target)
+
+    async def run_interview_turn(
+        self,
+        *,
+        session: Any,
+        user_content: str,
+        model_client: Any = None,
+    ) -> Any:
+        """Advance the operator interview by ONE turn via the AmbiguityLoop
+        (turn-based, LLM-driven / Ollama-capable, ambiguity-gated).
+
+        Lease invariant (PR5 BLOCKING fix): this NEVER acquires a ``_PerformerLease``.
+        The interview runs OUTSIDE the lease — each turn is a discrete message-endpoint
+        request that returns — so a session mid-interview cannot starve the per-session
+        Performer concurrency cap. The lease is taken only once the interview
+        terminates (``ready_for_review``) and dispatch begins.
+        """
+        from app.orchestrator.ambiguity_loop import AmbiguityLoop
+
+        loop = AmbiguityLoop(self._db, model_client=model_client)
+        return await loop.run_turn(session, user_content)
 
     async def maybe_run_replay_drift_check(
         self,

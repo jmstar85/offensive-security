@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "../ui/badge";
 import { useTopicWebSocket } from "../../hooks/useTopicWebSocket";
+import { sendPentestMessage } from "../../api/client";
 
 interface ConversationMessage {
   role: string;
@@ -30,6 +31,27 @@ function roleBadgeClass(role: string): string {
 export function ConversationTab({ sessionId }: Props) {
   const { events, status } = useTopicWebSocket(sessionId, "conversation");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // PR5: the operator answers the Coordinator's clarifying questions here. The
+  // reply round-trips through the turn-based interview (CoordinatorService.
+  // run_interview_turn) via /pentest-sessions/{id}/messages.
+  const onSend = async () => {
+    const content = input.trim();
+    if (!content || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await sendPentestMessage(sessionId, content);
+      setInput("");
+    } catch {
+      setError("Failed to send. Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const messages = events.filter(
     (e) => e.role !== undefined
@@ -94,6 +116,33 @@ export function ConversationTab({ sessionId }: Props) {
           </div>
         ))}
         <div ref={bottomRef} />
+      </div>
+
+      <div className="border-t border-border p-3 space-y-2">
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <div className="flex gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void onSend();
+              }
+            }}
+            rows={2}
+            placeholder="Answer the Coordinator's question…"
+            className="flex-1 resize-none rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => void onSend()}
+            disabled={sending || !input.trim()}
+            className="self-end rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -7,9 +7,12 @@ Automation chat) and returns a sentinel that the calling role's chain
 should treat as "block on user reply".
 
 The actual user reply comes back through the existing
-`/pentest-sessions/{id}/messages` endpoint and the `WorkflowService` chat
-flow — `ask` does NOT wait inline. This keeps the AmbiguityLoop in control
-of turn pacing and prevents a role from monopolizing the Performer loop.
+`/pentest-sessions/{id}/messages` endpoint and the turn-based interview
+(`CoordinatorService.run_interview_turn` → `AmbiguityLoop`). `ask` does NOT
+hold a coroutine open waiting for the reply, and the interview runs OUTSIDE the
+`_PerformerLease` (PR5): each turn is a discrete request that returns, so a
+session mid-interview cannot starve the per-session Performer concurrency cap.
+The lease is acquired only once the interview terminates and dispatch begins.
 """
 from __future__ import annotations
 
