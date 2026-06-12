@@ -6,11 +6,20 @@ go through ``backend/app/agents/backends/`` or ``backend/app/infra/`` so the
 filter chain (KaliBackend hardening, socket-proxy image-regex middleware,
 audit emission) is unbypassable.
 
-This test walks ``backend/app/`` and flags any module that:
+Scope: this is an IMPORT-LEVEL guard. It walks ``backend/app/`` and flags any
+module that, at import level:
   - imports the ``docker`` SDK or one of its submodules,
   - imports ``DockerBackend`` / ``KaliBackend`` symbolically,
-  - calls ``docker.from_env`` / ``docker.DockerClient`` attribute references,
-  - or calls ``AgentAdapter.execute`` directly (bypassing PlanExecutor).
+  - imports the ``from_env`` / ``DockerClient`` symbols.
+
+It does NOT inspect call sites. In particular it does NOT detect a direct
+``<adapter>.execute(...)`` call that bypasses the runtime safety envelope —
+that call-site check is delegated to
+``tests/ast/test_adapter_execute_only_via_safety_helper.py``, which resolves the
+adapter receiver and asserts ``adapter.execute`` is only ever called inside the
+shared runtime helper. The two guards are complementary: this one keeps the
+dockerd-import surface narrow; that one keeps the adapter-execute call surface
+narrow.
 """
 from __future__ import annotations
 
