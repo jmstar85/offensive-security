@@ -233,27 +233,38 @@ async def test_non_kali_safety_violation_does_not_persist_shim_block():
     assert shim_calls == [], f"non-kali slug must not persist shim block; got {shim_calls}"
 
 
-# ── FUTURE autonomous-path placeholder (PR4a) ────────────────────────────────
+# ── autonomous-path tier gate + runtime helper (PR4a — now live) ──────────────
 
-@pytest.mark.xfail(
-    reason="autonomous per-dispatch filter trio + tier gate (filter_plan_steps → "
-           "filter_by_tier_flags → RiskFilter) inside Performer._dispatch_tool lands "
-           "in PR4a; today _dispatch_tool has no tier gate and defers adapter.execute "
-           "(performer.py:320-323).",
-    strict=False,
-)
 @pytest.mark.asyncio
 async def test_autonomous_dispatch_runs_filter_trio_with_tier_gate_then_runtime_helper():
-    """PLACEHOLDER (PR4a): the autonomous lane must run the plan-time filter trio
-    INCLUDING ``filter_by_tier_flags`` per ``_dispatch_tool`` call, THEN the shared
-    runtime helper's brake envelope. Asserting it today is expected to fail because
-    the tier gate and the real-exec bridge do not yet exist on that path.
-    """
-    from app.orchestrator.performer import Performer  # noqa: F401
+    """PR4a: the autonomous lane runs the per-dispatch filter trio INCLUDING
+    ``filter_by_tier_flags`` inside ``Performer._dispatch_tool``, THEN the shared
+    runtime helper. The tier gate blocks an unapproved active-tier dispatch; with
+    the flag the dispatch reaches the helper (adapter.execute) and executes.
 
-    # Intent captured for PR4a; cannot pass until _dispatch_tool gains the tier
-    # gate and routes through execute_tool_through_safety_chain.
-    raise AssertionError(
-        "PR4a not yet implemented: _dispatch_tool lacks filter_by_tier_flags + "
-        "shared runtime helper wiring."
+    Companion to the runtime-envelope spy above (C7 distributed-invariant): this
+    asserts the plan-time half on the autonomous path; that asserts the runtime half.
+    """
+    from app.orchestrator.performer import Performer
+
+    # Unapproved active_recon dispatch is blocked by the per-dispatch tier gate.
+    p = Performer(_make_db(), uuid.uuid4())
+    p.bind_live_execution(
+        target={"ip_ranges": [], "domains": []},
+        approval_flags={}, whitelist_rules={}, actor_id="a",
     )
+    blocked = await p._dispatch_tool("nmap", {"intent": "port_scan", "config": {}})
+    assert blocked["approved"] is False
+    assert blocked["blocked_reason"] == "tier_gate"
+
+    # WITH the flag, the dispatch passes the trio and reaches the runtime helper.
+    p2 = Performer(_make_db(), uuid.uuid4())
+    p2.bind_live_execution(
+        target={"ip_ranges": [], "domains": []},
+        approval_flags={"approved_active_recon": True}, whitelist_rules={}, actor_id="a",
+    )
+    adapter = _make_adapter("nmap", findings=[{"type": "port"}])
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=adapter):
+        ok = await p2._dispatch_tool("nmap", {"intent": "port_scan", "config": {}})
+    assert ok["approved"] is True
+    assert ok.get("executed") is True

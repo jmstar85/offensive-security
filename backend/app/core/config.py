@@ -131,6 +131,12 @@ class Settings(BaseSettings):
     # replay. Default OFF keeps the v1.1 byte-identical replay untouched.
     osa_coordinator_populate_on_replay: bool = False
 
+    # XBOW autonomous lane (PR4a): when True, OrchestratorService.run drives the
+    # Performer engine (per-dispatch tier gate + shared runtime safety helper)
+    # instead of the deterministic PlanExecutor. Default OFF — the deterministic
+    # lane is the offline fallback and stays byte-identical until this flips (PR10).
+    osa_xbow_autonomous_enabled: bool = False
+
     # Sidecar feature flags (W3) — UI gating only, sidecars are managed by
     # docker-compose and IMAGE_REGEX, not by these booleans
     osa_mitm_proxy_enabled: bool = False

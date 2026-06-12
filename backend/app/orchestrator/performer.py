@@ -79,6 +79,17 @@ class PerformerSession:
     # Shared context dict passed into every Role.run() so roles can read
     # prior turn output (e.g. Generator's draft_plan feeds Pentester).
     context: dict[str, Any] = field(default_factory=dict)
+    # PR4a: live autonomous-lane execution context. ``egress_monitor`` is None on
+    # the P2a envelope-only path (unit tests that assert the safety-chain pass
+    # without executing); it is set by ``Performer.bind_live_execution()`` on the
+    # XBOW lane, and its presence switches ``_dispatch_tool`` from envelope-only to
+    # live execution through the shared runtime safety helper.
+    target: dict[str, Any] | None = None
+    approval_flags: dict[str, bool] = field(default_factory=dict)
+    whitelist_rules: dict[str, Any] = field(default_factory=dict)
+    actor_id: str | None = None
+    egress_monitor: Any | None = None
+    findings: list[dict] = field(default_factory=list)
 
 
 class Performer:
@@ -101,6 +112,33 @@ class Performer:
         """Look up a Role class in ROLE_REGISTRY and instantiate it."""
         role_cls = get_role(name)
         self.state.roles[name] = role_cls(**kwargs)
+
+    def bind_live_execution(
+        self,
+        *,
+        target: dict[str, Any],
+        approval_flags: dict[str, bool] | None,
+        whitelist_rules: dict[str, Any] | None,
+        actor_id: str,
+    ) -> None:
+        """Bind the live autonomous-lane execution context (PR4a).
+
+        Constructs ONE session-scoped ``EgressMonitor`` seeded with the session's
+        ``whitelist_rules`` (the SAME source the deterministic ``PlanExecutor`` uses
+        — ``OrchestratorService.run`` reads ``Target.whitelist_rules``) and threads
+        it into every ``_dispatch_tool`` call. Its presence is what switches
+        ``_dispatch_tool`` from envelope-only validation to live execution through
+        ``execute_tool_through_safety_chain``.
+        """
+        from app.safety.egress_monitor import EgressMonitor
+
+        self.state.target = target
+        self.state.approval_flags = approval_flags or {}
+        self.state.whitelist_rules = whitelist_rules or {}
+        self.state.actor_id = actor_id
+        self.state.egress_monitor = EgressMonitor(
+            self.state.session_id, self.state.whitelist_rules
+        )
 
     async def run_session(self) -> list[RoleResult]:
         """Drive the role loop for this session up to `PERFORMER_MAX_ITER`.
@@ -257,7 +295,7 @@ class Performer:
         from app.agents.registry import get_tool_entry, list_agent_types
         from app.agents.intent_vocabulary import INTENT_VOCABULARY
         from app.orchestrator.roles.adviser import should_trigger
-        from app.safety.exploit_allowlist import filter_plan_steps
+        from app.safety.exploit_allowlist import filter_by_tier_flags, filter_plan_steps
         from app.safety.risk_filter import RiskFilter
 
         intent = payload.get("intent")
@@ -290,7 +328,7 @@ class Performer:
             "action": intent or "execute",
             "description": payload.get("description", ""),
             "config": config,
-            "tier": entry.tier.value if hasattr(entry.tier, "value") else str(entry.tier),
+            "tier": entry.tier.value if hasattr(entry.tier, "value") else str(entry.tier),  # type: ignore[union-attr]
         }
         approved, blocked = filter_plan_steps([synthetic_step])
         if blocked:
@@ -299,6 +337,23 @@ class Performer:
                 "blocked_reason": "exploit_allowlist",
                 "blocked_details": blocked,
             }
+
+        # Step 4b (PR4a): per-dispatch tier gate — the autonomous-lane equivalent
+        # of the deterministic lane's service.py:274 gate. ONLY on the bound live
+        # lane; the unbound P2a envelope-only path preserves legacy behavior
+        # (skeleton tests assert the validated envelope without supplying flags).
+        bound = self.state.egress_monitor is not None
+        if bound:
+            approved, tier_blocked = filter_by_tier_flags(
+                approved, self.state.approval_flags or {}
+            )
+            if tier_blocked:
+                return {
+                    "approved": False,
+                    "blocked_reason": "tier_gate",
+                    "blocked_details": tier_blocked,
+                }
+
         risk_filter = RiskFilter()
         approved, risk_blocked = risk_filter.filter_steps(approved)
         if not approved:
@@ -317,11 +372,8 @@ class Performer:
             total_tool_calls=self.state.total_tool_calls,
         )
 
-        # Step 5–7: execution + event streaming + audit row are wired in P4
-        # where the OrchestratorService bridges Performer with the live
-        # PlanExecutor. The P2a dispatcher here returns the validated
-        # envelope so unit tests can assert the safety-chain pass.
-        result: dict[str, Any] = {
+        # Validated envelope (the P2a contract — preserved keys).
+        envelope: dict[str, Any] = {
             "approved": True,
             "tool": name,
             "intent": intent,
@@ -331,7 +383,209 @@ class Performer:
             "adviser_should_fire": adviser_fires,
             "adviser_reason": reason,
         }
-        return result
+
+        # Step 5–7 (PR4a): on the bound live lane, execute through the shared
+        # runtime safety helper with this Performer's OWN AgentExecution lifecycle.
+        # The unbound P2a path returns the validated envelope only (no execution).
+        if not bound:
+            return envelope
+
+        exec_outcome = await self._execute_step_through_helper(synthetic_step)
+        envelope.update(exec_outcome)
+        return envelope
+
+    async def _execute_step_through_helper(
+        self, step: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Run one validated step through the shared runtime safety helper, with
+        this Performer's OWN ``AgentExecution`` row lifecycle + topic publishes (PR4a).
+
+        Mirrors ``PlanExecutor``'s per-step body but owns its own rows so the
+        autonomous lane inherits the full runtime brake envelope (egress monitor,
+        container-id kill registration, rescope pause, shim-block audit) via
+        ``execute_tool_through_safety_chain`` — the SAME single sanctioned
+        adapter-execute site the deterministic lane uses. The rescope harvest runs
+        AFTER row finalization, matching the deterministic ordering.
+        """
+        from datetime import datetime, timezone
+
+        from sqlalchemy import update
+
+        from app.core.events import event_bus
+        from app.models.session import AgentExecution
+        from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
+        from app.orchestrator.safety_exec import execute_tool_through_safety_chain
+        from app.safety.audit import AuditLogger
+
+        db = self.state.db
+        session_id = self.state.session_id
+        actor_id = self.state.actor_id or ""
+        agent_type = step["agent"]
+        config = step.get("config", {})
+        audit = AuditLogger(db)
+        # Invariant: only reached on the bound live lane (egress_monitor set).
+        egress_monitor = self.state.egress_monitor
+        assert egress_monitor is not None
+
+        execution = AgentExecution(
+            session_id=session_id,
+            agent_type=agent_type,
+            status="running",
+            config_json=config,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.add(execution)
+        await db.flush()
+        exec_id = execution.id
+
+        await event_bus.publish(str(session_id), {
+            "type": "agent_started",
+            "agent": agent_type,
+            "execution_id": str(exec_id),
+            "step": step.get("order", 0),
+        }, topic="tasks")
+
+        async def _register_container(container_id: str) -> None:
+            if not execution.container_id:
+                execution.container_id = container_id
+                await db.execute(
+                    update(AgentExecution)
+                    .where(AgentExecution.id == exec_id)
+                    .values(container_id=container_id)
+                )
+
+        async def _publish_event(event) -> None:
+            topic = "terminal" if event.event_type == "log" else "agents"
+            await event_bus.publish(str(session_id), {
+                "type": event.event_type,
+                "agent": event.agent_type,
+                "execution_id": str(exec_id),
+                "data": event.data,
+            }, topic=topic)
+
+        result = await execute_tool_through_safety_chain(
+            step,
+            self.state.target or {},
+            egress_monitor=egress_monitor,
+            audit=audit,
+            session_id=session_id,
+            actor_id=actor_id,
+            on_event=_publish_event,
+            on_container_id=_register_container,
+        )
+
+        if result.killed:
+            return {"executed": True, "killed": True,
+                    "execution_id": str(exec_id), "findings": []}
+
+        if result.safety_violation is not None:
+            await db.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == exec_id)
+                .values(
+                    status="failed",
+                    ended_at=datetime.now(timezone.utc),
+                    output_json={"error": result.safety_violation, "reason": "shim_block"},
+                )
+            )
+            await event_bus.publish(str(session_id), {
+                "type": "agent_failed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "error": result.safety_violation,
+                "reason": "shim_block",
+            }, topic="tasks")
+            return {"executed": True, "safety_violation": result.safety_violation,
+                    "execution_id": str(exec_id), "findings": []}
+
+        if result.error is not None:
+            await db.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == exec_id)
+                .values(
+                    status="failed",
+                    ended_at=datetime.now(timezone.utc),
+                    output_json={"error": result.error},
+                )
+            )
+            await event_bus.publish(str(session_id), {
+                "type": "agent_failed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "error": result.error,
+            }, topic="tasks")
+            return {"executed": True, "error": result.error,
+                    "execution_id": str(exec_id), "findings": []}
+
+        step_findings = result.findings
+        self.state.findings.extend(step_findings)
+        await db.execute(
+            update(AgentExecution)
+            .where(AgentExecution.id == exec_id)
+            .values(
+                status="completed",
+                ended_at=datetime.now(timezone.utc),
+                output_json={"findings": step_findings},
+            )
+        )
+
+        # Rescope harvest (after row finalize — same ordering as PlanExecutor).
+        new_host_records: list[DiscoveredTarget] = []
+        for f in step_findings:
+            if not isinstance(f, dict):
+                continue
+            for nh in (f.get("new_hosts") or []):
+                host = nh.get("host") if isinstance(nh, dict) else None
+                tier = (nh.get("tier") if isinstance(nh, dict) else None) or "passive_recon"
+                if host:
+                    new_host_records.append(DiscoveredTarget(
+                        host=host, tier=tier,
+                        discovered_by_step_id=str(step.get("order", "")),
+                    ))
+            if f.get("is_new") and f.get("host"):
+                new_host_records.append(DiscoveredTarget(
+                    host=f["host"], tier=f.get("tier", "passive_recon"),
+                    discovered_by_step_id=str(step.get("order", "")),
+                ))
+
+        paused = False
+        rescope_id: str | None = None
+        if new_host_records:
+            rescope = RescopeService(db)
+            try:
+                approval = await rescope.pause_for_rescope(
+                    session_id=session_id,
+                    discovered=new_host_records,
+                    requesting_step_id=str(step.get("order", "")),
+                )
+                if approval is not None:
+                    paused = True
+                    rescope_id = str(approval.id)
+                    await event_bus.publish(str(session_id), {
+                        "type": "session_update",
+                        "status": "paused_for_rescope",
+                        "rescope_id": rescope_id,
+                    }, topic="session")
+            except Exception as exc:  # noqa: BLE001
+                await audit.log(
+                    action="rescope_trigger_failed",
+                    actor_id=actor_id,
+                    target_entity="pentest_session",
+                    target_id=str(session_id),
+                    details={"error": str(exc)},
+                )
+
+        if not paused:
+            await event_bus.publish(str(session_id), {
+                "type": "agent_completed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "finding_count": len(step_findings),
+            }, topic="tasks")
+
+        return {"executed": True, "findings": step_findings,
+                "execution_id": str(exec_id),
+                "paused_for_rescope": paused, "rescope_id": rescope_id}
 
     def _concurrency_guard(self) -> "_PerformerLease":
         """Acquire a concurrency slot for this Performer session.

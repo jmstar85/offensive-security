@@ -307,15 +307,28 @@ class OrchestratorService:
             "plan": plan,
         })
 
-        # 9. Execute approved steps
-        executor = PlanExecutor(self._db)
-        findings = await executor.execute(
-            session_id=session_id,
-            steps=approved_steps,
-            target=target,
-            whitelist_rules=whitelist_rules,
-            actor_id=str(actor_id),
-        )
+        # 9. Execute approved steps. The XBOW autonomous lane (flag-gated,
+        # default OFF) drives the Performer engine through the shared runtime
+        # safety helper; the deterministic PlanExecutor lane is the unchanged
+        # offline fallback (byte-identical replay) when the flag is off.
+        if getattr(settings, "osa_xbow_autonomous_enabled", False):
+            findings = await self._run_autonomous_lane(
+                session_id=session_id,
+                steps=approved_steps,
+                target=target,
+                whitelist_rules=whitelist_rules,
+                approval_flags=session.approval_flags or {},
+                actor_id=str(actor_id),
+            )
+        else:
+            executor = PlanExecutor(self._db)
+            findings = await executor.execute(
+                session_id=session_id,
+                steps=approved_steps,
+                target=target,
+                whitelist_rules=whitelist_rules,
+                actor_id=str(actor_id),
+            )
         await self._db.commit()
 
         # 10. Generate report
@@ -345,6 +358,59 @@ class OrchestratorService:
             "status": "completed",
             "finding_count": len(findings),
         })
+
+    async def _run_autonomous_lane(
+        self,
+        *,
+        session_id: uuid.UUID,
+        steps: list[dict],
+        target: dict,
+        whitelist_rules: dict,
+        approval_flags: dict,
+        actor_id: str,
+    ) -> list[dict]:
+        """XBOW autonomous lane (PR4a): drive the Performer engine behind the flag.
+
+        Binds the session-scoped safety context (one EgressMonitor seeded with the
+        session's whitelist_rules + the approval flags for the per-dispatch tier
+        gate), registers the Minimal-6 topological roles, and runs the role loop.
+        ``_dispatch_tool`` runs the per-dispatch filter trio (incl. tier gate) and
+        the shared runtime safety helper for every tool call.
+
+        In PR4a the roles are still fixtures (the live Ollama tool-use loop lands in
+        PR4b), so no tools are dispatched yet — this closes the "Performer has no
+        live app caller" gap and binds the safety context. Findings accumulate on
+        the Performer as roles begin dispatching (PR4b+).
+        """
+        from app.orchestrator.performer import Performer, PerformerConcurrencyLimit
+
+        performer = Performer(self._db, session_id)
+        performer.bind_live_execution(
+            target=target,
+            approval_flags=approval_flags,
+            whitelist_rules=whitelist_rules,
+            actor_id=actor_id,
+        )
+        # Seed the approved plan as a hint the Pentester loop can read (PR4b).
+        performer.state.context["approved_steps"] = list(steps)
+        # Register the topological roles (Generator → Pentester → Reporter);
+        # run_session skips any that are not registered.
+        for role_name in ("generator", "pentester", "reporter"):
+            try:
+                performer.register_role_by_name(role_name)
+            except Exception:  # noqa: BLE001 — role not in registry → skip
+                continue
+        try:
+            await performer.run_session()
+        except PerformerConcurrencyLimit as exc:
+            await self._audit.log(
+                action="performer.concurrency_limit",
+                actor_id=actor_id,
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"error": str(exc)},
+            )
+        return list(performer.state.findings)
 
     async def _materialize_families(
         self, session_id: uuid.UUID, ordered_phases: list[str], actor_id: uuid.UUID

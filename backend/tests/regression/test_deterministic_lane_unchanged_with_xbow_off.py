@@ -38,6 +38,7 @@ _XBOW_FLAGS = (
     "osa_xbow_families_enabled",
     "osa_kali_backend_enabled",
     "osa_multi_provider_llm",
+    "osa_xbow_autonomous_enabled",
 )
 
 
