@@ -307,11 +307,12 @@ class OrchestratorService:
             "plan": plan,
         })
 
-        # 9. Execute approved steps. The XBOW autonomous lane (flag-gated,
-        # default OFF) drives the Performer engine through the shared runtime
-        # safety helper; the deterministic PlanExecutor lane is the unchanged
-        # offline fallback (byte-identical replay) when the flag is off.
-        if getattr(settings, "osa_xbow_autonomous_enabled", False):
+        # 9. Execute approved steps. The XBOW autonomous lane (flag-gated) drives
+        # the Performer engine through the shared runtime safety helper — but ONLY
+        # on the fresh-plan lane. Saved-workflow REPLAY always uses the deterministic
+        # PlanExecutor (re-runs the exact saved steps) so byte-identical replay holds
+        # even when the autonomous flag is ON (PR10 default-flip precondition).
+        if getattr(settings, "osa_xbow_autonomous_enabled", False) and lane == "fresh_plan":
             findings = await self._run_autonomous_lane(
                 session_id=session_id,
                 steps=approved_steps,
