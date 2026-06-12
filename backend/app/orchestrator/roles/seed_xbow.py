@@ -35,6 +35,53 @@ vector_to_tool_palette: dict[AttackVector, list[str]] = {
 }
 
 
+# Per-vector ordered phases for the understanding-driven PlanOfWork (PR6 / C3). The
+# deterministic PlanOfWorkBuilder keeps its constant ["recon","exploit","extraction"]
+# for byte-identical replay; this drives the autonomous lane from the
+# understanding's target_kind so phases are NOT hardcoded across targets.
+vector_to_phases: dict[AttackVector, list[str]] = {
+    AttackVector.WEB_APP: ["recon", "web_discovery", "web_exploit"],
+    AttackVector.NETWORK: ["recon", "network_enum", "service_probe"],
+    AttackVector.CLOUD: ["recon", "cloud_enum"],
+    AttackVector.MOBILE: ["recon", "mobile_static"],
+    AttackVector.UNKNOWN: ["recon"],
+}
+
+
+def coerce_vector(value: "AttackVector | str | None") -> AttackVector:
+    """Map an understanding ``target_kind`` (or AttackVector) onto an AttackVector."""
+    if isinstance(value, AttackVector):
+        return value
+    try:
+        return AttackVector(str(value))
+    except ValueError:
+        return AttackVector.UNKNOWN
+
+
+async def _dispatch_palette(performer: Any, slugs: list[str]) -> list[dict]:
+    """Dispatch each tool in ``slugs`` through the safety-wired delegator. Returns a
+    per-tool outcome list. Only meaningful when the performer is bound to a live
+    execution context (PR4a); the per-dispatch tier gate + runtime helper still apply."""
+    from app.orchestrator.runtime_delegator import delegate_tool_call
+
+    outcomes: list[dict] = []
+    for slug in slugs:
+        delegated = await delegate_tool_call(performer, slug, {"config": {}})
+        result = delegated.get("result", {}) if isinstance(delegated, dict) else {}
+        outcomes.append({
+            "tool": slug,
+            "approved": result.get("approved"),
+            "blocked_reason": result.get("blocked_reason"),
+            "executed": result.get("executed"),
+        })
+    return outcomes
+
+
+def _is_bound(performer: Any) -> bool:
+    state = getattr(performer, "state", None)
+    return state is not None and getattr(state, "egress_monitor", None) is not None
+
+
 class SessionManagementAgent(Role):
     """Top-level family coordinator. Decides which DiscoveryAgent + AttackAgent
     families to spawn for a given AttackVector. Slug = 'session_management_agent'."""
@@ -42,7 +89,7 @@ class SessionManagementAgent(Role):
     slug = "session_management_agent"
     name = "session_management_agent"
 
-    async def run(self, *, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
         vector = context.get("attack_vector", AttackVector.UNKNOWN)
         return RoleResult(
             role_name=self.slug,
@@ -55,12 +102,22 @@ class DiscoveryAgent(Role):
     slug = "discovery_agent"
     name = "discovery_agent"
 
-    async def run(self, *, performer: Any, context: dict[str, Any]) -> RoleResult:
-        vector = context.get("attack_vector", AttackVector.UNKNOWN)
+    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+        vector = coerce_vector(context.get("attack_vector", AttackVector.UNKNOWN))
         palette = vector_to_tool_palette.get(vector, [])
+        if not _is_bound(performer) or not palette:
+            return RoleResult(
+                role_name=self.slug,
+                messages=[{"role": "assistant", "content": f"discovery_agent palette={palette}"}],
+                finished=False,
+            )
+        # Discovery dispatches the recon-leaning head of the vector palette through
+        # the safety-wired delegator (PR6) — understanding.target_kind drives this.
+        outcomes = await _dispatch_palette(performer, palette[:2])
         return RoleResult(
             role_name=self.slug,
-            messages=[{"role": "assistant", "content": f"discovery_agent palette={palette}"}],
+            messages=[{"role": "assistant",
+                       "content": f"discovery_agent vector={vector.value} dispatched={outcomes}"}],
             finished=False,
         )
 
@@ -69,9 +126,10 @@ class AttackAgent(Role):
     slug = "attack_agent"
     name = "attack_agent"
 
-    async def run(self, *, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
         from app.core.config import settings
-        vector = context.get("attack_vector", AttackVector.UNKNOWN)
+        vector = coerce_vector(context.get("attack_vector", AttackVector.UNKNOWN))
+        palette = vector_to_tool_palette.get(vector, [])
 
         # When OSA_TRAFFIC_VIA_MITM is on, AttackAgent egress goes through
         # the mitmproxy sidecar — the proxy address is published via
@@ -86,14 +144,29 @@ class AttackAgent(Role):
             proxy_url = os.environ.get("OSA_MITM_PROXY_URL", "http://mitmproxy:8080")
             context["_attack_agent_egress_proxy"] = proxy_url
 
+        if not _is_bound(performer) or not palette:
+            return RoleResult(
+                role_name=self.slug,
+                messages=[{
+                    "role": "assistant",
+                    "content": (
+                        f"attack_agent vector={vector.value} "
+                        f"egress_via_mitm={egress_via_mitm} "
+                        f"proxy={proxy_url or 'direct'}"
+                    ),
+                }],
+                finished=False,
+            )
+        # Attack family dispatches its full vector palette through the delegator;
+        # the per-dispatch tier gate keeps exploit-tier tools behind approval flags.
+        outcomes = await _dispatch_palette(performer, palette)
         return RoleResult(
             role_name=self.slug,
             messages=[{
                 "role": "assistant",
                 "content": (
-                    f"attack_agent vector={vector} "
-                    f"egress_via_mitm={egress_via_mitm} "
-                    f"proxy={proxy_url or 'direct'}"
+                    f"attack_agent vector={vector.value} "
+                    f"egress_via_mitm={egress_via_mitm} dispatched={outcomes}"
                 ),
             }],
             finished=False,

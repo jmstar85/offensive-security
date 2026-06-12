@@ -279,6 +279,37 @@ class CoordinatorService:
         loop = AmbiguityLoop(self._db, model_client=model_client)
         return await loop.run_turn(session, user_content)
 
+    def derive_plan_of_work(self, understanding: UnderstandingOfTarget) -> PlanOfWork:
+        """Understanding-driven PlanOfWork (PR6 / C3).
+
+        Derives ordered_phases + family_recommendations from the understanding's
+        target_kind/AttackVector — so a web_app target yields web-flavored phases +
+        palette and a network target yields network-flavored ones (NOT the hardcoded
+        constant). The deterministic PlanOfWorkBuilder keeps its constant phases for
+        byte-identical replay; this drives the autonomous lane.
+        """
+        from app.orchestrator.roles.seed_xbow import (
+            coerce_vector,
+            vector_to_phases,
+            vector_to_tool_palette,
+        )
+
+        vector = coerce_vector(understanding.target_kind)
+        palette = list(vector_to_tool_palette.get(vector, []))
+        phases = list(vector_to_phases.get(vector, ["recon"]))
+        families = [
+            {"family_kind": "discovery", "vector": vector.value,
+             "palette": palette[:2], "rationale": "scope the surface first"},
+            {"family_kind": "attack", "vector": vector.value,
+             "palette": palette, "rationale": f"{vector.value} attack family"},
+        ]
+        return PlanOfWork(
+            objectives=[f"Assess {vector.value} target via {', '.join(phases)}"],
+            family_recommendations=families,
+            ordered_phases=phases,
+            success_criteria=[f"findings reported for the {vector.value} surface"],
+        )
+
     async def maybe_run_replay_drift_check(
         self,
         *,

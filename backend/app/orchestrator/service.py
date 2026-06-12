@@ -393,9 +393,30 @@ class OrchestratorService:
         )
         # Seed the approved plan as a hint the Pentester loop can read (PR4b).
         performer.state.context["approved_steps"] = list(steps)
-        # Register the topological roles (Generator → Pentester → Reporter);
-        # run_session skips any that are not registered.
-        for role_name in ("generator", "pentester", "reporter"):
+
+        # Understanding-driven dispatch (PR6 / C3): derive the AttackVector from the
+        # session's Understanding and scope the executor to its tool palette so the
+        # tool-use loop can only dispatch tools the understanding selected.
+        from app.orchestrator.roles.seed_xbow import coerce_vector, vector_to_tool_palette
+
+        understanding = await self._load_understanding(session_id)
+        vector = coerce_vector(understanding.get("target_kind") if understanding else None)
+        palette = list(vector_to_tool_palette.get(vector, []))
+        performer.state.context["attack_vector"] = vector.value
+
+        if palette:
+            from app.orchestrator.roles.pentester import Pentester
+
+            performer.register_role(Pentester(
+                tools_allowed=sorted(set(palette) | {"ask", "done", "search_in_memory"})
+            ))
+        else:
+            try:
+                performer.register_role_by_name("pentester")
+            except Exception:  # noqa: BLE001
+                pass
+        # Register the remaining topological roles; run_session skips unregistered.
+        for role_name in ("generator", "reporter"):
             try:
                 performer.register_role_by_name(role_name)
             except Exception:  # noqa: BLE001 — role not in registry → skip
@@ -411,6 +432,17 @@ class OrchestratorService:
                 details={"error": str(exc)},
             )
         return list(performer.state.findings)
+
+    async def _load_understanding(self, session_id: uuid.UUID) -> dict | None:
+        """Read the session's persisted Understanding-of-Target (PR6 dispatch input)."""
+        row = (
+            await self._db.execute(
+                select(PentestSession.understanding_json).where(
+                    PentestSession.id == session_id
+                )
+            )
+        ).scalar_one_or_none()
+        return row if isinstance(row, dict) else None
 
     async def _materialize_families(
         self, session_id: uuid.UUID, ordered_phases: list[str], actor_id: uuid.UUID
