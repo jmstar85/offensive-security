@@ -18,7 +18,11 @@ from typing import Any
 
 from app.core.config import settings
 from app.orchestrator.roles.base import Role, RoleResult
-from app.orchestrator.roles.llm_provider import resolve_role_llm_model
+from app.orchestrator.roles.llm_provider import (
+    resolve_role_client,
+    resolve_role_llm_model,
+    resolve_role_send_model,
+)
 from app.orchestrator.roles.registry import register_role
 
 
@@ -45,22 +49,57 @@ class Adviser(Role):
         )
 
     async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
-        """Emit a single guidance message based on the trigger reason in
-        `context`. Smoke v1: returns a static message; P4 replaces with a
-        real LLM call that inspects the calling chain's recent messages.
+        """Emit a single guidance message based on the trigger reason in `context`.
+
+        Live path (PR4b): when an LLM client is resolved, ask it for a concise
+        corrective instruction grounded in the calling chain's recent activity.
+        Fallback: a static guidance message (smoke / offline / Ollama unreachable).
         """
         reason = context.get("trigger_reason", "loop_detected")
-        message = (
+        static_message = (
             "Adviser intervention: detected "
             f"{reason}. Stop calling the same tool and either reframe the "
             "goal, switch to a different tool from your palette, or call "
             "`ask` to escalate to the operator."
         )
+
+        client = resolve_role_client(context.get("model_client"))
+        if client is None:
+            return RoleResult(
+                role_name=self.name,
+                messages=[{"role": "assistant", "content": static_message}],
+                finished=True,
+                tool_calls=0,
+            )
+
+        from app.orchestrator.model_client import ModelUnreachable
+
+        recent = str(context.get("pentester_output", ""))[:1000]
+        tin = tout = 0
+        try:
+            resp = await client.send(
+                model_id=resolve_role_send_model(context.get("anthropic_model_id")),
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"The calling role is looping ({reason}). Recent activity:\n"
+                        f"{recent}\nGive ONE concise corrective instruction (<200 tokens)."
+                    ),
+                }],
+                system=self.system_prompt,
+            )
+            message = (resp.text or "").strip() or static_message
+            tin, tout = resp.tokens_in, resp.tokens_out
+        except ModelUnreachable:
+            message = static_message  # graceful fallback — the Adviser is advisory
+
         return RoleResult(
             role_name=self.name,
             messages=[{"role": "assistant", "content": message}],
             finished=True,
             tool_calls=0,
+            usage_input_tokens=tin,
+            usage_output_tokens=tout,
         )
 
 

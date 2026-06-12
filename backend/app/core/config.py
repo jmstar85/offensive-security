@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     reflector_retry_backoff_seconds: list[float] = [0.2, 1.0, 5.0]
     pentester_max_tool_calls: int = 100
     limited_role_max_tool_calls: int = 20
+    # PR4b: wall-clock budget for a single Pentester live tool-use loop. Trips
+    # IterationCapHit alongside the per-turn max_tool_calls cap.
+    performer_wall_clock_seconds: int = 600
 
     # Set via env CREDENTIAL_FERNET_KEY (base64 32-byte). Required when osa_multi_provider_llm=True.
     credential_fernet_key: str = ""
