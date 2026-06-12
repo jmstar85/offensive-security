@@ -31,12 +31,17 @@ _T2 = _only("osa_multi_provider_llm")
 _T3 = _only("osa_multi_provider_llm", "osa_coordinator_enabled", "osa_xbow_families_enabled")
 # T4 — all 7 True
 _T4 = frozenset((flag, True) for flag in _V1_FLAGS)
+# T5 — Ollama autonomous milestone default (PR10): coordinator + xbow families ON,
+# WITHOUT multi-provider LLM (the autonomous lane uses local Ollama via
+# osa_llm_provider, not the per-user credential vault). This is the new shipped default.
+_T5 = _only("osa_coordinator_enabled", "osa_xbow_families_enabled")
 
 _SUPPORTED: dict[str, frozenset[tuple[str, bool]]] = {
     "T1": _T1,
     "T2": _T2,
     "T3": _T3,
     "T4": _T4,
+    "T5": _T5,
 }
 
 

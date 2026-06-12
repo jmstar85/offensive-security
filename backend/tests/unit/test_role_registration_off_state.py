@@ -14,8 +14,14 @@ _XBOW_SLUGS = {"session_management_agent", "discovery_agent", "attack_agent"}
 
 @pytest.fixture()
 def clean_registry():
-    """Snapshot ROLE_REGISTRY before test, restore it after."""
+    """Snapshot ROLE_REGISTRY, strip xbow slugs at setup, restore after.
+
+    PR10 made osa_xbow_families_enabled default ON, so the families may already be
+    registered at app startup. Stripping them here keeps the flag-OFF assertions
+    deterministic (they verify lazy_register_if_enabled(False) does not (re)add them)."""
     snapshot = dict(ROLE_REGISTRY)
+    for slug in _XBOW_SLUGS:
+        ROLE_REGISTRY.pop(slug, None)
     yield
     ROLE_REGISTRY.clear()
     ROLE_REGISTRY.update(snapshot)

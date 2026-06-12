@@ -89,16 +89,17 @@ class Settings(BaseSettings):
     memorist_k: int = 3
     memorist_score_threshold: float = 0.7
 
-    # Feature flag for new /flow/:id route + 2-pane shell (gated; default OFF until P3-main)
-    osa_flow_ui_enabled: bool = False
+    # Feature flag for new /flow/:id route + 2-pane shell (PR10: default ON after the
+    # scanme E2E verified the autonomous loop)
+    osa_flow_ui_enabled: bool = True
 
     # Deployment environment (controls feature-flag topology enforcement)
     environment: str = "dev"
 
-    # Kali coexistence backend (v1 — default OFF; double-enforced at get_adapter + palette_for_domain)
-    osa_kali_backend_enabled: bool = False
-    # XBOW agent families (default OFF; lazy-registered at startup via lazy_register_if_enabled)
-    osa_xbow_families_enabled: bool = False
+    # Kali coexistence backend (PR10: default ON; double-enforced at get_adapter + palette_for_domain)
+    osa_kali_backend_enabled: bool = True
+    # XBOW agent families (PR10: default ON; lazy-registered at startup via lazy_register_if_enabled)
+    osa_xbow_families_enabled: bool = True
     # Kali docker socket proxy endpoint (used by KaliBackend only; PR-7 wires this into docker-compose)
     kali_docker_host: str = "tcp://docker-socket-proxy:2375"
 
@@ -124,8 +125,8 @@ class Settings(BaseSettings):
     # credential row; the process-env ANTHROPIC_API_KEY fallback is disabled.
     osa_multi_provider_llm: bool = False
 
-    # Coordinator service flags (default OFF)
-    osa_coordinator_enabled: bool = False
+    # Coordinator service flags (PR10: coordinator default ON after verification)
+    osa_coordinator_enabled: bool = True
     osa_coordinator_replay_enabled: bool = False
     # Demo/no-LLM lane: when True, the saved-workflow path builds the
     # deterministic UnderstandingOfTarget + PlanOfWork directly (bypassing
@@ -142,9 +143,11 @@ class Settings(BaseSettings):
 
     # XBOW autonomous lane (PR4a): when True, OrchestratorService.run drives the
     # Performer engine (per-dispatch tier gate + shared runtime safety helper)
-    # instead of the deterministic PlanExecutor. Default OFF — the deterministic
-    # lane is the offline fallback and stays byte-identical until this flips (PR10).
-    osa_xbow_autonomous_enabled: bool = False
+    # instead of the deterministic PlanExecutor (fresh-plan lane only; saved-workflow
+    # replay always uses PlanExecutor → byte-identical). PR10: default ON after the
+    # scanme E2E verified the full loop. The deterministic lane is the explicit-OFF
+    # offline fallback.
+    osa_xbow_autonomous_enabled: bool = True
 
     # Sidecar feature flags (W3) — UI gating only, sidecars are managed by
     # docker-compose and IMAGE_REGEX, not by these booleans

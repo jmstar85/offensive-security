@@ -14,6 +14,16 @@ from app.orchestrator.model_client import Response
 from app.orchestrator.workflow_service import WorkflowService
 
 
+@pytest.fixture(autouse=True)
+def _legacy_chat_path(monkeypatch):
+    """These tests exercise the legacy v3.2.1 chat path. PR10 flipped
+    osa_flow_ui_enabled default ON (routes through AmbiguityLoop); pin it OFF here so
+    this file keeps testing the legacy path it was written for."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "osa_flow_ui_enabled", False)
+
+
 def _user(role=UserRole.MEMBER):
     return SimpleNamespace(
         id=uuid.uuid4(),

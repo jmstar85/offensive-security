@@ -45,7 +45,10 @@ async def _project_with_whitelist(db, whitelist_rules):
 
 
 @pytest.mark.asyncio
-async def test_send_message_emits_turn_and_token_metrics(db):
+async def test_send_message_emits_turn_and_token_metrics(db, monkeypatch):
+    # Legacy v3.2.1 chat path (PR10 flipped osa_flow_ui_enabled default ON).
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "osa_flow_ui_enabled", False)
     project = await _project_with_whitelist(db, {"passive_allowed": ["acme.com"]})
     user = _user()
     mock = AsyncMock()

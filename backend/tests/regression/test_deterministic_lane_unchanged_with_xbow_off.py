@@ -28,32 +28,38 @@ from tests._regression.v11_comparator import (
 )
 from tests.regression._live_replay_harness import run_saved_workflow_once
 
-# The osa_* flags that, if ON, would route execution onto an autonomous/XBOW
-# lane and could leak coordinator / agent_family / autonomous agent_execution
-# rows into the deterministic trace.
-_XBOW_FLAGS = (
+# PR10 flipped the autonomous-lane ENABLE flags default ON. Byte-identical
+# saved-workflow replay is now preserved STRUCTURALLY (replay skips the Coordinator
+# and is gated to PlanExecutor — service.run `lane == "fresh_plan"`), NOT by these
+# flags being OFF. The flags below are the autonomous-lane enables (now ON).
+_DEFAULT_ON_FLAGS = (
     "osa_coordinator_enabled",
-    "osa_coordinator_replay_enabled",
-    "osa_coordinator_populate_on_replay",
     "osa_xbow_families_enabled",
     "osa_kali_backend_enabled",
-    "osa_multi_provider_llm",
     "osa_xbow_autonomous_enabled",
+)
+# These MUST stay OFF by default — each would alter the saved-workflow REPLAY trace
+# (coordinator runs/populates on replay) or require the credential vault.
+_REPLAY_SAFE_OFF_FLAGS = (
+    "osa_coordinator_replay_enabled",
+    "osa_coordinator_populate_on_replay",
+    "osa_multi_provider_llm",
 )
 
 
-def test_all_xbow_flags_default_off():
-    """Guard the precondition: every autonomous/XBOW flag defaults to False.
-
-    If a default flips to True, the deterministic-lane byte-identical guarantee
-    (and the rest of this file's assertions) silently stops meaning what it says,
-    so fail loudly here first.
-    """
-    for flag in _XBOW_FLAGS:
-        assert getattr(settings, flag) is False, (
-            f"expected settings.{flag} to default to False; got {getattr(settings, flag)!r}"
+def test_xbow_default_posture_preserves_replay_safety():
+    """PR10: autonomous-lane enable flags default ON (verified by the scanme E2E),
+    while the replay-affecting flags stay OFF so saved-workflow byte-identical replay
+    is preserved (the rest of this file drives PlanExecutor directly, flag-independent)."""
+    for flag in _DEFAULT_ON_FLAGS:
+        assert getattr(settings, flag) is True, (
+            f"expected settings.{flag} to default True post-PR10; got {getattr(settings, flag)!r}"
         )
-    # Provider stays on the deterministic/anthropic default (no ollama loop).
+    for flag in _REPLAY_SAFE_OFF_FLAGS:
+        assert getattr(settings, flag) is False, (
+            f"expected settings.{flag} to stay False (replay safety); got {getattr(settings, flag)!r}"
+        )
+    # Provider default stays anthropic; operators set ollama for the local autonomous lane.
     assert settings.osa_llm_provider == "anthropic", (
         f"expected osa_llm_provider default 'anthropic'; got {settings.osa_llm_provider!r}"
     )

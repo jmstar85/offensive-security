@@ -32,9 +32,16 @@ async def test_feature_flag_endpoint_returns_current_flag_state(monkeypatch):
     assert response["osa_kali_backend_enabled"] is False
 
 
-def test_feature_flag_default_is_off():
-    """Default flag value is OFF (per ADR-004 rollout policy)."""
+def test_feature_flag_default_posture():
+    """PR10: the autonomous-lane enable flags default ON after the scanme E2E
+    verified the full loop; the multi-provider credential vault stays OFF (the
+    autonomous lane uses local Ollama via osa_llm_provider)."""
     from app.core.config import Settings
 
     fresh = Settings(_env_file=None)
-    assert fresh.osa_flow_ui_enabled is False
+    assert fresh.osa_flow_ui_enabled is True
+    assert fresh.osa_coordinator_enabled is True
+    assert fresh.osa_xbow_families_enabled is True
+    assert fresh.osa_xbow_autonomous_enabled is True
+    assert fresh.osa_kali_backend_enabled is True
+    assert fresh.osa_multi_provider_llm is False
