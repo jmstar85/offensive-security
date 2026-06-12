@@ -16,9 +16,13 @@ class NmapAdapter(AgentAdapter):
 
     def build_command(self, target: dict, config: dict) -> list[str]:
         targets = target.get("ip_ranges", []) + target.get("domains", [])
-        target_str = " ".join(targets) if targets else "127.0.0.1"
+        if not targets:
+            targets = ["127.0.0.1"]
         flags = config.get("flags", "-sV -sC -O --open -T4")
-        return ["nmap"] + flags.split() + ["-oX", "/tmp/scan.xml", target_str]
+        # The image ENTRYPOINT is `nmap`, so emit ARGS ONLY (no leading "nmap").
+        # Each target is its own argv element — a single space-joined string is
+        # parsed by nmap as one (invalid) target expression.
+        return [*flags.split(), "-oX", "/tmp/scan.xml", *targets]
 
     def parse_output(self, raw_output: str) -> AgentResult:
         findings: list[dict] = []

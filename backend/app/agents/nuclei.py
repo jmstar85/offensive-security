@@ -22,8 +22,9 @@ class NucleiAdapter(AgentAdapter):
         target_str = ",".join(targets) if targets else "127.0.0.1"
         severity = config.get("severity", "low,medium,high,critical")
         # JSON-lines output for easy parsing; exclude critical destructive templates
+        # The image ENTRYPOINT is `nuclei`, so emit ARGS ONLY (no leading "nuclei").
         return [
-            "nuclei", "-u", target_str,
+            "-u", target_str,
             "-severity", severity,
             "-exclude-tags", "dos,fuzz",
             "-json-export", "/tmp/nuclei_results.json",
