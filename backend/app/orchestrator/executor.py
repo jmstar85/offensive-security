@@ -1,4 +1,12 @@
-"""Plan executor — runs approved steps sequentially, streaming events."""
+"""Plan executor — runs approved steps sequentially, streaming events.
+
+The per-step container run + live runtime brakes (adapter.execute, egress monitor,
+container-id kill registration, shim-block audit) are delegated to the shared
+``execute_tool_through_safety_chain`` helper (the single sanctioned adapter-execute
+call site). This module keeps the ``AgentExecution`` row lifecycle, the topic
+publishes, and the rescope harvest in place so the saved-workflow trace stays
+byte-identical (see ``app/orchestrator/safety_exec.py`` for the boundary rationale).
+"""
 from __future__ import annotations
 
 import uuid
@@ -7,13 +15,11 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.kali_whitelist import SafetyViolation
-from app.agents.registry import get_adapter
 from app.core.events import event_bus
 from app.models.session import AgentExecution
 from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
+from app.orchestrator.safety_exec import execute_tool_through_safety_chain
 from app.safety.audit import AuditLogger
-from app.safety.audit_kali import persist_kali_shim_block
 from app.safety.egress_monitor import EgressMonitor
 
 
@@ -58,97 +64,93 @@ class PlanExecutor:
                 "step": step.get("order", 0),
             }, topic="tasks")
 
-            adapter = get_adapter(agent_type)
-            container_id_holder: list[str] = []
-            step_findings: list[dict] = []
-
-            try:
-                async for event in adapter.execute(target, config, container_id_holder):
-                    # Register container ID for kill switch
-                    if container_id_holder and not execution.container_id:
-                        execution.container_id = container_id_holder[0]
-                        await self._db.execute(
-                            update(AgentExecution)
-                            .where(AgentExecution.id == exec_id)
-                            .values(container_id=container_id_holder[0])
-                        )
-
-                    # Egress monitor on log lines
-                    if event.event_type == "log":
-                        line = event.data.get("line", "")
-                        safe = await egress_monitor.monitor_log_line(line, actor_id)
-                        if not safe:
-                            return all_findings  # session killed
-
-                    # v4.0 P4 gap-fill 3/3 — route per-event-type to the
-                    # right panel topic. Logs go to the Terminal tab; status
-                    # / finding / error go to the Agents tab. Legacy
-                    # subscribers (no `topics` filter) still receive all
-                    # events.
-                    event_topic = (
-                        "terminal" if event.event_type == "log" else "agents"
+            # Caller-owned sinks the runtime helper calls mid-stream. Loop vars are
+            # bound as defaults so each step's closure captures its own row/exec_id.
+            async def _register_container(
+                container_id: str,
+                _execution: AgentExecution = execution,
+                _exec_id: uuid.UUID = exec_id,
+            ) -> None:
+                # Register container ID for the kill switch (it reads
+                # AgentExecution.container_id) — once, on the first event.
+                if not _execution.container_id:
+                    _execution.container_id = container_id
+                    await self._db.execute(
+                        update(AgentExecution)
+                        .where(AgentExecution.id == _exec_id)
+                        .values(container_id=container_id)
                     )
-                    await event_bus.publish(str(session_id), {
-                        "type": event.event_type,
-                        "agent": event.agent_type,
-                        "execution_id": str(exec_id),
-                        "data": event.data,
-                    }, topic=event_topic)
 
-                    # Collect findings from final status event
-                    if event.event_type == "status" and "result" in event.data:
-                        result = event.data["result"]
-                        step_findings = result.get("findings", [])
+            async def _publish_event(event, _exec_id: uuid.UUID = exec_id) -> None:
+                # v4.0 P4 gap-fill 3/3 — route per-event-type to the right panel
+                # topic. Logs go to the Terminal tab; status / finding / error go to
+                # the Agents tab. Legacy subscribers (no `topics` filter) still
+                # receive all events.
+                event_topic = "terminal" if event.event_type == "log" else "agents"
+                await event_bus.publish(str(session_id), {
+                    "type": event.event_type,
+                    "agent": event.agent_type,
+                    "execution_id": str(_exec_id),
+                    "data": event.data,
+                }, topic=event_topic)
 
-            except SafetyViolation as exc:
-                # WhitelistShim rejected the (slug, args) pair at build_command
-                # time. Persist the per-step row to audit_logs so operators
-                # can see it in /audit-logs — the Python-logging + Prometheus
-                # emission inside kali_allowlist alone is not UI-visible.
-                if agent_type.startswith("kali_"):
-                    await persist_kali_shim_block(
-                        self._audit,
-                        session_id=session_id,
-                        actor_id=actor_id,
-                        agent=agent_type,
-                        tool_slug=config.get("tool_slug"),
-                        reason=str(exc),
-                    )
+            # Run the tool through the shared runtime safety envelope (the single
+            # sanctioned adapter.execute site + egress/kill-reg/shim-audit brakes).
+            result = await execute_tool_through_safety_chain(
+                step,
+                target,
+                egress_monitor=egress_monitor,
+                audit=self._audit,
+                session_id=session_id,
+                actor_id=actor_id,
+                on_event=_publish_event,
+                on_container_id=_register_container,
+            )
+
+            if result.killed:
+                return all_findings  # session killed by egress monitor
+
+            if result.safety_violation is not None:
+                # WhitelistShim rejected the (slug, args) pair. The shim-block audit
+                # row was already persisted inside the helper (kali-scoped); here we
+                # finalize the execution row + emit the Tasks-tab failure event.
                 await self._db.execute(
                     update(AgentExecution)
                     .where(AgentExecution.id == exec_id)
                     .values(
                         status="failed",
                         ended_at=datetime.now(timezone.utc),
-                        output_json={"error": str(exc), "reason": "shim_block"},
+                        output_json={"error": result.safety_violation, "reason": "shim_block"},
                     )
                 )
                 await event_bus.publish(str(session_id), {
                     "type": "agent_failed",
                     "agent": agent_type,
                     "execution_id": str(exec_id),
-                    "error": str(exc),
+                    "error": result.safety_violation,
                     "reason": "shim_block",
                 }, topic="tasks")
                 continue
-            except Exception as exc:
+
+            if result.error is not None:
                 await self._db.execute(
                     update(AgentExecution)
                     .where(AgentExecution.id == exec_id)
                     .values(
                         status="failed",
                         ended_at=datetime.now(timezone.utc),
-                        output_json={"error": str(exc)},
+                        output_json={"error": result.error},
                     )
                 )
                 await event_bus.publish(str(session_id), {
                     "type": "agent_failed",
                     "agent": agent_type,
                     "execution_id": str(exec_id),
-                    "error": str(exc),
+                    "error": result.error,
                 }, topic="tasks")
                 continue
 
+            step_findings = result.findings
             all_findings.extend(step_findings)
             await self._db.execute(
                 update(AgentExecution)
@@ -161,7 +163,8 @@ class PlanExecutor:
             )
 
             # PR2b.3: harvest newly-discovered hosts from step findings and trigger
-            # rescope automatically. Findings shaped as either:
+            # rescope automatically. Runs AFTER row finalization (as in v1.1) so the
+            # agent_execution trace is byte-identical. Findings shaped as either:
             #   - {'new_hosts': [{'host': str, 'tier': str}], ...}  (preferred)
             #   - {'host': str, 'tier': str, 'is_new': True}        (per-finding)
             new_host_records: list[DiscoveredTarget] = []

@@ -60,7 +60,7 @@ async def test_step_with_new_hosts_triggers_rescope():
     db = _make_db()
     executor = PlanExecutor(db)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=_make_adapter_event(findings)), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=_make_adapter_event(findings)), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
@@ -118,7 +118,7 @@ async def test_step_with_finding_marked_is_new_triggers_rescope():
     db = _make_db()
     executor = PlanExecutor(db)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=_make_adapter_event(findings)), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=_make_adapter_event(findings)), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
@@ -155,7 +155,7 @@ async def test_step_with_no_new_hosts_does_not_trigger_rescope():
     db = _make_db()
     executor = PlanExecutor(db)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=_make_adapter_event(findings)), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=_make_adapter_event(findings)), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
@@ -195,7 +195,7 @@ async def test_rescope_service_returning_none_does_not_pause():
     db = _make_db()
     executor = PlanExecutor(db)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=_make_adapter_event(findings)), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=_make_adapter_event(findings)), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
@@ -257,7 +257,7 @@ async def test_rescope_exception_audited_but_does_not_kill_execution():
     async def _fake_audit_log(**kwargs):
         audit_calls.append(kwargs)
 
-    with patch("app.orchestrator.executor.get_adapter", side_effect=[adapter_a, adapter_b]), \
+    with patch("app.orchestrator.safety_exec.get_adapter", side_effect=[adapter_a, adapter_b]), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
@@ -305,7 +305,7 @@ async def test_discovered_target_tier_default_is_passive_recon():
     db = _make_db()
     executor = PlanExecutor(db)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=_make_adapter_event(findings)), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=_make_adapter_event(findings)), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 

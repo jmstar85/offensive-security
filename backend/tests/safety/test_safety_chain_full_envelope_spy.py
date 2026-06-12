@@ -123,7 +123,7 @@ async def test_runtime_envelope_fires_in_spec_order_on_current_executor_path():
 
     db.execute = _spy_db_execute
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=adapter), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=adapter), \
          patch.object(adapter, "execute", side_effect=_spy_execute), \
          patch("app.orchestrator.executor.EgressMonitor.monitor_log_line", _spy_monitor_log_line), \
          patch("app.orchestrator.executor.RescopeService") as MockRescope, \
@@ -180,8 +180,8 @@ async def test_shim_block_audit_fires_on_kali_safety_violation():
     async def _spy_persist(audit, **kwargs):  # noqa: ANN001
         shim_calls.append(kwargs)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=adapter), \
-         patch("app.orchestrator.executor.persist_kali_shim_block", _spy_persist), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=adapter), \
+         patch("app.orchestrator.safety_exec.persist_kali_shim_block", _spy_persist), \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
         mock_bus.publish = AsyncMock()
@@ -217,8 +217,8 @@ async def test_non_kali_safety_violation_does_not_persist_shim_block():
     async def _spy_persist(audit, **kwargs):  # noqa: ANN001
         shim_calls.append(kwargs)
 
-    with patch("app.orchestrator.executor.get_adapter", return_value=adapter), \
-         patch("app.orchestrator.executor.persist_kali_shim_block", _spy_persist), \
+    with patch("app.orchestrator.safety_exec.get_adapter", return_value=adapter), \
+         patch("app.orchestrator.safety_exec.persist_kali_shim_block", _spy_persist), \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
 
         mock_bus.publish = AsyncMock()

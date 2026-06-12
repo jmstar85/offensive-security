@@ -59,8 +59,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import pytest
-
 BACKEND_APP = Path(__file__).resolve().parents[2] / "app"
 
 # The ONLY module allowed to host an adapter-``.execute`` call after PR2.
@@ -162,45 +160,39 @@ def _scan_tree() -> dict[Path, list[tuple[str, int]]]:
 
 # ── Heuristic demonstration (Residual Concern #2 gate) ───────────────────────
 
-def test_heuristic_detects_current_adapter_execute_call_site():
-    """PROOF the heuristic works on the real tree TODAY: it must find at least one
-    adapter-execute call, and that call must be in ``executor.py`` (the current
-    home of ``adapter = get_adapter(...)`` / ``adapter.execute(...)``).
+def test_heuristic_detects_adapter_execute_call_site():
+    """PROOF the heuristic works on the real tree: it must find at least one
+    adapter-execute call, and (post-PR2) that call lives in the sanctioned runtime
+    helper ``safety_exec.py::execute_tool_through_safety_chain``.
 
-    This is the demonstration the plan requires before PR2 flips the
-    canonical-location xfail below.
+    This is the demonstration the plan requires (Residual Concern #2 gate): the
+    heuristic is not silently broken/empty — it detects the real call site on the
+    real tree. (Pre-PR2 the site was ``executor.py``; PR2 moved it into the helper.)
     """
     hits = _scan_tree()
     all_sites = [(p, fn, ln) for p, sites in hits.items() for (fn, ln) in sites]
     assert all_sites, (
         "heuristic found ZERO adapter-execute calls — it is broken; it must detect "
-        "the current executor.py call site."
+        "the real adapter.execute call site."
     )
 
-    executor_py = BACKEND_APP / "orchestrator" / "executor.py"
-    executor_sites = [s for s in all_sites if s[0] == executor_py]
-    assert executor_sites, (
-        "heuristic did not detect the known adapter.execute call in "
-        f"executor.py; detected sites were: "
+    helper_sites = [s for s in all_sites if s[0] == SANCTIONED_HELPER_MODULE]
+    assert helper_sites, (
+        "heuristic did not detect the known adapter.execute call in the runtime "
+        f"helper {SANCTIONED_HELPER_MODULE.name}; detected sites were: "
         f"{[(str(p.relative_to(BACKEND_APP)), fn, ln) for p, fn, ln in all_sites]}"
     )
 
 
 # ── The invariant (xfail until PR2 introduces the helper) ────────────────────
 
-@pytest.mark.xfail(
-    reason="safety_exec.py::execute_tool_through_safety_chain helper lands in PR2; "
-           "today the only adapter.execute call site is PlanExecutor.execute in "
-           "executor.py, so the canonical-location invariant cannot hold yet. PR2 "
-           "flips this to passing.",
-    strict=False,
-)
 def test_adapter_execute_called_only_in_safety_helper():
     """Every adapter-execute call must live in
     ``safety_exec.py::execute_tool_through_safety_chain``.
 
-    Pre-PR2 this fails (the call lives in ``executor.py``). PR2 moves the call into
-    the helper and this flips green.
+    PR2 moved the only call site out of ``executor.py`` into the shared runtime
+    helper, so this is now a live gate: any new direct adapter-execute call site
+    (which would bypass the runtime brake envelope) fails this test.
     """
     hits = _scan_tree()
     offenders: list[str] = []

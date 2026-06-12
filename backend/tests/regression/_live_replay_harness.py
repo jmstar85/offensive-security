@@ -178,7 +178,9 @@ async def run_saved_workflow_once(
 
     # Patch the event bus so no real subscribers are required; we assert on DB
     # rows, not on published events, for replay determinism.
-    with patch("app.orchestrator.executor.get_adapter", side_effect=_fake_get_adapter), \
+    # get_adapter now lives in the shared runtime helper (PR2); event_bus stays
+    # in the executor (publishes are caller-owned).
+    with patch("app.orchestrator.safety_exec.get_adapter", side_effect=_fake_get_adapter), \
          patch("app.orchestrator.executor.event_bus") as mock_bus:
         mock_bus.publish = AsyncMock()
         findings = await executor.execute(
