@@ -315,6 +315,7 @@ class OrchestratorService:
         if getattr(settings, "osa_xbow_autonomous_enabled", False) and lane == "fresh_plan":
             findings = await self._run_autonomous_lane(
                 session_id=session_id,
+                prompt=prompt,
                 steps=approved_steps,
                 target=target,
                 whitelist_rules=whitelist_rules,
@@ -364,6 +365,7 @@ class OrchestratorService:
         self,
         *,
         session_id: uuid.UUID,
+        prompt: str,
         steps: list[dict],
         target: dict,
         whitelist_rules: dict,
@@ -392,12 +394,17 @@ class OrchestratorService:
             whitelist_rules=whitelist_rules,
             actor_id=actor_id,
         )
-        # Seed the approved plan as a hint the Pentester loop can read (PR4b).
+        # Seed the operator objective + the approved plan so the Pentester tool-use
+        # loop knows WHAT to do (without the objective the LLM has no task).
+        performer.state.context["objective"] = prompt
         performer.state.context["approved_steps"] = list(steps)
 
         # Understanding-driven dispatch (PR6 / C3): derive the AttackVector from the
-        # session's Understanding and scope the executor to its tool palette so the
-        # tool-use loop can only dispatch tools the understanding selected.
+        # session's Understanding to PRIORITIZE the executor's palette. The Pentester
+        # gets the vector palette UNION a core recon set, so recon is always possible
+        # even when the target_kind heuristic misclassifies (e.g. scanme.nmap.org →
+        # web_app by TLD); the vector still steers via context["attack_vector"] + the
+        # objective prompt. Understanding-INFORMED, not understanding-RESTRICTED.
         from app.orchestrator.roles.seed_xbow import coerce_vector, vector_to_tool_palette
 
         understanding = await self._load_understanding(session_id)
@@ -405,17 +412,12 @@ class OrchestratorService:
         palette = list(vector_to_tool_palette.get(vector, []))
         performer.state.context["attack_vector"] = vector.value
 
-        if palette:
-            from app.orchestrator.roles.pentester import Pentester
+        _RECON_BASE = {"nmap", "httpx", "passive_recon", "subfinder", "dnsx"}
+        from app.orchestrator.roles.pentester import Pentester
 
-            performer.register_role(Pentester(
-                tools_allowed=sorted(set(palette) | {"ask", "done", "search_in_memory"})
-            ))
-        else:
-            try:
-                performer.register_role_by_name("pentester")
-            except Exception:  # noqa: BLE001
-                pass
+        performer.register_role(Pentester(
+            tools_allowed=sorted(set(palette) | _RECON_BASE | {"ask", "done", "search_in_memory"})
+        ))
         # Register the remaining topological roles; run_session skips unregistered.
         for role_name in ("generator", "reporter"):
             try:
