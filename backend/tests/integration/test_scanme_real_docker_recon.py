@@ -24,7 +24,8 @@ pytestmark = pytest.mark.skipif(
 
 _TARGET = {"ip_ranges": [], "domains": ["scanme.nmap.org"]}
 _WHITELIST = {"ip_ranges": ["45.33.32.156/32"], "domains": ["scanme.nmap.org"]}
-_NMAP_CFG = {"network": "bridge", "flags": "-p 22,80,9929 -sV --open -T4 -Pn"}
+# No "network" key — the autonomous lane injects osa_agent_container_network (PR7).
+_NMAP_CFG = {"flags": "-p 22,80,9929 -sV --open -T4 -Pn"}
 
 
 def _mock_db() -> AsyncMock:

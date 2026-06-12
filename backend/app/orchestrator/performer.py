@@ -422,6 +422,10 @@ class Performer:
         actor_id = self.state.actor_id or ""
         agent_type = step["agent"]
         config = step.get("config", {})
+        # PR7: attach a Docker network so the tool container can reach the target
+        # (the LLM never specifies Docker networking). Without this the backend sets
+        # network_disabled=True and the scan reaches nothing.
+        config.setdefault("network", settings.osa_agent_container_network)
         audit = AuditLogger(db)
         # Invariant: only reached on the bound live lane (egress_monitor set).
         egress_monitor = self.state.egress_monitor

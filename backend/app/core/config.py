@@ -134,6 +134,12 @@ class Settings(BaseSettings):
     # replay. Default OFF keeps the v1.1 byte-identical replay untouched.
     osa_coordinator_populate_on_replay: bool = False
 
+    # PR7: Docker network the autonomous lane attaches tool containers to (the LLM
+    # never specifies Docker networking). "bridge" works on a bare host; set to the
+    # compose tool network (e.g. "osa-net") in docker-compose. A tool dispatched with
+    # no network gets network_disabled=True and cannot reach the target.
+    osa_agent_container_network: str = "bridge"
+
     # XBOW autonomous lane (PR4a): when True, OrchestratorService.run drives the
     # Performer engine (per-dispatch tier gate + shared runtime safety helper)
     # instead of the deterministic PlanExecutor. Default OFF — the deterministic
