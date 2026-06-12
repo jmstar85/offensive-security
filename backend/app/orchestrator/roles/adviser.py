@@ -18,6 +18,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.orchestrator.roles.base import Role, RoleResult
+from app.orchestrator.roles.llm_provider import resolve_role_llm_model
 from app.orchestrator.roles.registry import register_role
 
 
@@ -38,7 +39,7 @@ class Adviser(Role):
         super().__init__(
             name="adviser",
             system_prompt=ADVISER_SYSTEM_PROMPT,
-            llm_model=llm_model or settings.anthropic_default_model,
+            llm_model=llm_model or resolve_role_llm_model(),
             tools_allowed=[],  # Adviser does not invoke tools
             max_tool_calls=0,
         )

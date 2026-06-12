@@ -20,6 +20,11 @@ from typing import Any
 
 from app.core.config import settings
 from app.orchestrator.roles.base import Role, RoleResult
+from app.orchestrator.roles.llm_provider import (
+    resolve_role_client,
+    resolve_role_llm_model,
+    resolve_role_send_model,
+)
 from app.orchestrator.roles.registry import register_role
 
 
@@ -53,7 +58,7 @@ class Generator(Role):
         super().__init__(
             name="generator",
             system_prompt=GENERATOR_SYSTEM_PROMPT,
-            llm_model=llm_model or settings.anthropic_default_model,
+            llm_model=llm_model or resolve_role_llm_model(),
             tools_allowed=tools_allowed or ["ask", "done", "search_in_memory"],
             max_tool_calls=settings.limited_role_max_tool_calls,
         )
@@ -78,7 +83,9 @@ class Generator(Role):
         user_content = str(context.get("user_content", ""))
         history = list(context.get("history") or [])
         memory_hits = list(context.get("memory_hits") or [])
-        client = context.get("model_client")
+        # PR3: provider-aware client resolution. Injected client wins; else Ollama
+        # when osa_llm_provider="ollama"; else None → smoke fallback below.
+        client = resolve_role_client(context.get("model_client"))
 
         if client is None:
             # Smoke fallback — used by unit tests and any caller that has
@@ -109,11 +116,9 @@ class Generator(Role):
         if user_content:
             messages.append({"role": "user", "content": rag_prefix + user_content})
 
-        # Resolve the Anthropic model id. Generator's `llm_model` carries the
-        # alias (e.g. `claude-sonnet-4-6`); ModelClient.send needs the full
-        # vendor id. Use the default-model-id from settings; admin paths can
-        # override via context if needed in v3.4.
-        model_id = context.get("anthropic_model_id") or settings.anthropic_default_model_anthropic_id
+        # Resolve the send model id. Anthropic → an explicit context override else
+        # the vendor default id (unchanged); Ollama → the configured ollama model.
+        model_id = resolve_role_send_model(context.get("anthropic_model_id"))
 
         response = await client.send(
             model_id=model_id,
