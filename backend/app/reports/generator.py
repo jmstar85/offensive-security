@@ -7,6 +7,7 @@ from collections import Counter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.report import Report
+from app.safety.evidence import tag_all
 
 _SEVERITY_SCORE = {"critical": 9.0, "high": 7.0, "medium": 5.0, "low": 3.0, "info": 1.0}
 
@@ -21,6 +22,9 @@ class ReportGenerator:
         findings: list[dict],
         plan: dict,
     ) -> Report:
+        # PR8: evidence-tag every finding (provenance, not a success verdict). Done
+        # at report time only — agent_execution.output_json stays byte-identical.
+        findings = tag_all(findings)
         severity_counts = Counter(f.get("severity", "info") for f in findings)
         risk_score = self._calculate_risk_score(findings)
         summary = self._build_summary(findings, severity_counts, plan)

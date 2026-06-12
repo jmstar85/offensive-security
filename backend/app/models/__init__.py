@@ -8,6 +8,7 @@ from app.models.agent import AgentRegistry
 from app.models.workflow import Workflow
 from app.models.msgchain import MsgChain
 from app.models.memory_entry import MemoryEntry
+from app.models.oob import OOBCallback
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "Workflow",
     "MsgChain",
     "MemoryEntry",
+    "OOBCallback",
 ]
