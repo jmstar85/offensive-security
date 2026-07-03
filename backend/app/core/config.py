@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,6 +17,32 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production-use-a-real-secret-key"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    # Role assigned to public self-signups (/auth/register). Defaulted to "admin"
+    # so that, for now, every account has full access and admin/regular users are
+    # not distinguished. Set DEFAULT_SIGNUP_ROLE=member to re-introduce the split.
+    default_signup_role: str = "admin"
+
+    @field_validator("default_signup_role")
+    @classmethod
+    def _validate_signup_role(cls, v: str) -> str:
+        # Fail fast at startup rather than 500-ing on the first signup: the value
+        # must be a real UserRole the auth gates recognise (imported lazily to
+        # avoid a config<->models import cycle).
+        from app.models.user import UserRole
+
+        valid = {r.value for r in UserRole}
+        if v not in valid:
+            raise ValueError(
+                f"default_signup_role must be one of {sorted(valid)}, got {v!r}"
+            )
+        return v
+
+    @field_validator("admin_email")
+    @classmethod
+    def _normalize_admin_email(cls, v: str) -> str:
+        # Match the lowercasing done on the register/login lookup paths so the
+        # seeded admin (written from this value) can actually log in.
+        return v.strip().lower()
 
     # Claude API
     anthropic_api_key: str = ""
@@ -26,6 +53,16 @@ class Settings(BaseSettings):
     anthropic_admin_model: str = "claude-opus-4-6"
     anthropic_default_model_anthropic_id: str = "claude-sonnet-4-6-20250514"
     anthropic_admin_model_anthropic_id: str = "claude-opus-4-6-20250514"
+
+    # New-flow session/engine default (PR4, Principle 6 / PM3) — the user-facing
+    # session default consumed ONLY by ModelSelector / session.model_id. Kept
+    # DISTINCT from anthropic_default_model (the cheaper internal-role fallback,
+    # unchanged) so making the engine default opus-4-8 does NOT invert the cost
+    # of every internal anthropic role or silently promote the interview/chat turn.
+    session_default_model: str = "claude-opus-4-8"
+    session_default_model_anthropic_id: str = "claude-opus-4-8"
+    # Cheap OpenAI model for the per-provider interview/chat resolver (Blocking 1).
+    openai_interview_model: str = "gpt-4o-mini"
 
     # Interview loop
     workflow_max_interview_turns: int = 6

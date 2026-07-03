@@ -187,6 +187,26 @@ def _next_state_after_turn(turn: AssistantTurn, new_turn_count: int) -> str:
     return "interviewing"
 
 
+def resolve_interview_model(session: PentestSession) -> str:
+    """Cheap PER-PROVIDER interview/chat model (Blocking 1 / Principle 6c).
+
+    Decoupled from ``session.model_id`` (never promoted to opus-4-8) and coherent
+    with the interview PROVIDER, so an Ollama-only session never receives an
+    Anthropic id (which would be garbage to ``OllamaClient``) and "Ollama never
+    prompts" holds. Provider comes from ``session.llm_provider_pref`` (the single
+    provider field, Finding 6); when NULL it falls back to the global
+    ``settings.osa_llm_provider`` switch (Principle 10) — anthropic ⇒ sonnet-4-6,
+    so legacy interview behavior is byte-identical.
+    """
+    provider = getattr(session, "llm_provider_pref", None) or settings.osa_llm_provider
+    if provider == "ollama":
+        return settings.ollama_model
+    if provider == "openai":
+        return settings.openai_interview_model
+    # anthropic (and any unrecognized provider) → cheap Anthropic default
+    return settings.anthropic_default_model
+
+
 # ── Service ─────────────────────────────────────────────────────────────────
 
 
@@ -222,7 +242,12 @@ class WorkflowService:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        resolved = self._selector.resolve(model_id, user)
+        # RBAC/validation only: a non-admin requesting an admin-only model still
+        # 403s and unknown model ids 400 (existing opus-4-6 semantics). The
+        # session/engine default model_id is set explicitly to the opus-4-8
+        # session default below — decoupled from the selector's None fallback
+        # (Principle 6 / PM3) so it is never the cheaper internal-role default.
+        self._selector.resolve(model_id, user)
 
         session = PentestSession(
             project_id=project_id,
@@ -231,10 +256,11 @@ class WorkflowService:
             interview_state="not_started",
             interview_turn_count=0,
             ambiguity_score=Decimal("1.000"),
-            # PR4: switch to settings.session_default_model (opus-4-8); keeping
-            # the current selector default here avoids referencing a setting
-            # that does not exist until PR4.
-            model_id=resolved.model_id,
+            # PR4: session/engine default is opus-4-8 (settings.session_default_model),
+            # consumed by ModelSelector/session.model_id and used to route the
+            # autonomous engine roles. The interview/chat turn is resolved
+            # per-provider via resolve_interview_model (never promoted to opus).
+            model_id=settings.session_default_model,
             domain_agent_slug=domain_agent_slug,
             team_id=user.team_id,
             draft_plan_json={},
@@ -347,7 +373,13 @@ class WorkflowService:
             from app.orchestrator.llm.router import LLMRouter  # noqa: PLC0415
             from app.orchestrator.llm.context import get_current_user_id  # noqa: PLC0415
 
-            _provider = getattr(session, "llm_provider_pref", None) or "anthropic"
+            # Interview PROVIDER + MODEL are both taken per-provider from
+            # session.llm_provider_pref (NULL ⇒ global switch, Principle 10), so
+            # they stay coherent and are DECOUPLED from session.model_id: an
+            # ollama session routes OllamaClient with qwen3-14b (never an
+            # Anthropic id), and an opus-4-8 session never runs opus here
+            # (Blocking 1 / PM3).
+            _provider = getattr(session, "llm_provider_pref", None) or settings.osa_llm_provider
             _user_id = getattr(session, "actor_id", None) or get_current_user_id()
             _llm_client = await LLMRouter().route(
                 db=self._db,
@@ -356,7 +388,7 @@ class WorkflowService:
             )
             try:
                 response = await _llm_client.send(
-                    model_id=self._resolved_anthropic_id(session.model_id),
+                    model_id=self._resolved_anthropic_id(resolve_interview_model(session)),
                     messages=history,
                     system=CHAT_SYSTEM_PROMPT,
                 )
@@ -384,7 +416,7 @@ class WorkflowService:
             client = self._client or ModelClient()
             try:
                 response = await client.send(
-                    model_id=self._resolved_anthropic_id(session.model_id),
+                    model_id=self._resolved_anthropic_id(resolve_interview_model(session)),
                     messages=history,
                     system=CHAT_SYSTEM_PROMPT,
                 )
@@ -440,13 +472,17 @@ class WorkflowService:
         await self._db.flush()
 
         # ── observability hooks (P5) ────────────────────────────────────
+        # Label token metrics with the model actually used for THIS interview
+        # turn (resolve_interview_model — per-provider, decoupled from
+        # session.model_id), not the opus-4-8 session/engine default.
+        _interview_model = resolve_interview_model(session)
         metrics.session_interview_turns_total.inc(outcome=new_state)
         metrics.session_ambiguity_score.inc(bucket=ambiguity_bucket(turn.ambiguity))
         metrics.anthropic_tokens_total.inc(
-            value=response.tokens_in, model=session.model_id, phase="input",
+            value=response.tokens_in, model=_interview_model, phase="input",
         )
         metrics.anthropic_tokens_total.inc(
-            value=response.tokens_out, model=session.model_id, phase="output",
+            value=response.tokens_out, model=_interview_model, phase="output",
         )
         if session.domain_agent_slug:
             metrics.domain_agent_dispatch_total.inc(
@@ -629,6 +665,8 @@ class WorkflowService:
         return result.scalars().first()
 
     def _resolved_anthropic_id(self, model_id: str) -> str:
+        if model_id == settings.session_default_model:
+            return settings.session_default_model_anthropic_id
         if model_id == settings.anthropic_default_model:
             return settings.anthropic_default_model_anthropic_id
         if model_id == settings.anthropic_admin_model:
