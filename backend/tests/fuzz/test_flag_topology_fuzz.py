@@ -55,9 +55,9 @@ def test_exhaustive_128_combos_dev_accepts_all():
     assert count == 128
 
 
-# --- always present: exhaustive 128-combo prod rejects non-T1..T4 ---
+# --- always present: exhaustive 128-combo prod rejects non-T1..T5 ---
 
-def test_exhaustive_128_combos_prod_rejects_non_t1234():
+def test_exhaustive_128_combos_prod_rejects_non_t12345():
     accepted = 0
     rejected = 0
     for flag_values in itertools.product((False, True), repeat=7):
@@ -71,5 +71,6 @@ def test_exhaustive_128_combos_prod_rejects_non_t1234():
             with pytest.raises(UnsupportedFlagTopology):
                 validate_flag_topology(settings)
             rejected += 1
-    assert accepted == 4, f"Expected 4 accepted combos, got {accepted}"
-    assert rejected == 124, f"Expected 124 rejected combos, got {rejected}"
+    # T1..T5 supported since PR10 added T5 (Ollama autonomous milestone default).
+    assert accepted == 5, f"Expected 5 accepted combos, got {accepted}"
+    assert rejected == 123, f"Expected 123 rejected combos, got {rejected}"
