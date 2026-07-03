@@ -25,6 +25,7 @@ ambiguity ONLY when required fields are missing (Critic D-3 mitigation).
 """
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from dataclasses import dataclass
@@ -236,18 +237,48 @@ class WorkflowService:
         model_map: dict[str, str] | None = None,
         mode: str = "automation",
         provider: str | None = None,
+        template_id: str | None = None,
     ) -> PentestSession:
         result = await self._db.execute(select(Project).where(Project.id == project_id))
         project = result.scalar_one_or_none()
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        # RBAC/validation only: a non-admin requesting an admin-only model still
-        # 403s and unknown model ids 400 (existing opus-4-6 semantics). The
-        # session/engine default model_id is set explicitly to the opus-4-8
-        # session default below — decoupled from the selector's None fallback
-        # (Principle 6 / PM3) so it is never the cheaper internal-role default.
-        self._selector.resolve(model_id, user)
+        # Gap 1: HONOR the client's session-model selection. resolve() enforces
+        # RBAC (unknown id → 400, admin-only opus-4-6 for a non-admin → 403) AND
+        # returns the validated catalog entry — we now USE that entry's model_id
+        # for session.model_id instead of discarding it and hardcoding the
+        # default. When the client omits model_id we pass
+        # settings.session_default_model explicitly (opus-4-8, non-admin
+        # selectable) rather than relying on the selector's cheaper None fallback
+        # (Principle 6 / PM3), so the documented session default is preserved.
+        resolved_model = self._selector.resolve(
+            model_id or settings.session_default_model, user
+        )
+
+        # Gap 2: a workflow-template selection SEEDS the deterministic saved-
+        # workflow lane. The template's steps/edges (agents.py — single source of
+        # truth) map directly into the plan_json shape normalize_workflow_plan /
+        # PlanExecutor consume, so a non-empty plan_json flips the service.py lane
+        # gate ("saved_workflow" if session.plan_json else "fresh_plan") to the
+        # deterministic PlanExecutor. Seed BOTH plan_json AND draft_plan_json:
+        # approve() promotes draft_plan_json → plan_json, so seeding draft_plan_json
+        # is what makes the template survive the create → approve → launch flow.
+        template_plan: dict | None = None
+        if template_id is not None:
+            from app.api.v1.agents import get_workflow_template  # noqa: PLC0415
+
+            template = get_workflow_template(template_id)
+            if template is None:
+                raise HTTPException(
+                    status_code=400, detail=f"Unknown template_id: {template_id}"
+                )
+            template_plan = {
+                "version": 1,
+                "kind": "workflow",
+                "steps": copy.deepcopy(template.get("steps", [])),
+                "edges": copy.deepcopy(template.get("edges", [])),
+            }
 
         session = PentestSession(
             project_id=project_id,
@@ -256,14 +287,20 @@ class WorkflowService:
             interview_state="not_started",
             interview_turn_count=0,
             ambiguity_score=Decimal("1.000"),
-            # PR4: session/engine default is opus-4-8 (settings.session_default_model),
-            # consumed by ModelSelector/session.model_id and used to route the
-            # autonomous engine roles. The interview/chat turn is resolved
-            # per-provider via resolve_interview_model (never promoted to opus).
-            model_id=settings.session_default_model,
+            # Gap 1: the RBAC-validated client selection (opus-4-8 by default,
+            # or the client's model_id when provided) — consumed by
+            # ModelSelector/session.model_id to route the autonomous engine
+            # roles. The interview/chat turn is resolved per-provider via
+            # resolve_interview_model (never promoted to opus).
+            model_id=resolved_model.model_id,
             domain_agent_slug=domain_agent_slug,
             team_id=user.team_id,
-            draft_plan_json={},
+            # Gap 2: a template selection seeds BOTH plan_json (flips the lane
+            # gate to deterministic immediately) and draft_plan_json (so approve's
+            # draft→plan promotion keeps the template). No template ⇒ unchanged
+            # (plan_json=None → fresh-plan/autonomous lane; draft_plan_json={}).
+            plan_json=copy.deepcopy(template_plan) if template_plan else None,
+            draft_plan_json=copy.deepcopy(template_plan) if template_plan else {},
             # New-flow additive fields (PR1). `provider` (when present) is the
             # selector's provider choice, persisted as llm_provider_pref
             # (single provider field, Finding 6); NULL preserves the

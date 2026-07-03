@@ -107,6 +107,25 @@ _TEMPLATES = [
 ]
 
 
+def workflow_template_ids() -> set[str]:
+    """Known workflow-template ids — the single source of truth for the
+    new-flow ``template_id`` validation and ``plan_json`` seeding (Gap 2).
+    """
+    return {t["id"] for t in _TEMPLATES}
+
+
+def get_workflow_template(template_id: str) -> dict | None:
+    """Return the workflow-template definition for ``template_id`` (or None).
+
+    Reused by ``WorkflowService.create_draft`` to seed ``session.plan_json``
+    without duplicating the template data (single source of truth).
+    """
+    for t in _TEMPLATES:
+        if t["id"] == template_id:
+            return t
+    return None
+
+
 def _is_visible_tool(entry) -> bool:
     """Hide kali_* tools from the catalog when OSA_KALI_BACKEND_ENABLED is off.
 
