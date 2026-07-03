@@ -3,6 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.orchestrator.llm.credential_resolver import CredentialNotFound
 from sqlalchemy import func, select
 
 from app.api.v1 import agents, auth, projects, sessions, reports, audit_logs, workflows
@@ -139,6 +142,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Fail-closed credential errors that reach the HTTP layer (an Assistant turn or a
+# flag-ON interview with no stored per-user LLM credential) map to a clean,
+# actionable 400 instead of a raw 500 (Principles 7-8). The detail intentionally
+# never echoes the user_id from the exception message.
+@app.exception_handler(CredentialNotFound)
+async def _credential_not_found_handler(_request, _exc):  # noqa: ANN001, ANN202
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": (
+                "No active LLM credential for the selected provider. "
+                "Add a credential to run this model."
+            ),
+            "code": "credential_required",
+        },
+    )
+
 
 # API routes
 app.include_router(auth.router, prefix=f"{settings.api_prefix}/auth", tags=["auth"])

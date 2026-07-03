@@ -244,17 +244,27 @@ class WorkflowService:
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        # Gap 1: HONOR the client's session-model selection. resolve() enforces
-        # RBAC (unknown id → 400, admin-only opus-4-6 for a non-admin → 403) AND
-        # returns the validated catalog entry — we now USE that entry's model_id
-        # for session.model_id instead of discarding it and hardcoding the
-        # default. When the client omits model_id we pass
-        # settings.session_default_model explicitly (opus-4-8, non-admin
-        # selectable) rather than relying on the selector's cheaper None fallback
-        # (Principle 6 / PM3), so the documented session default is preserved.
-        resolved_model = self._selector.resolve(
-            model_id or settings.session_default_model, user
-        )
+        # Gap 1 (provider-aware): HONOR the client's session-model selection.
+        # The ModelSelector catalog is Anthropic-only (opus-4-8 default /
+        # sonnet-4-6 selectable / admin-gated opus-4-6), so it can only validate
+        # Anthropic ids. Run it — for RBAC (unknown→400, admin-only opus-4-6 for a
+        # non-admin→403) and the documented session default (opus-4-8 when the
+        # client omits model_id) — ONLY when the session provider is Anthropic (or
+        # unset, which defaults to Anthropic). For ollama/openai the model_id is
+        # that provider's own id (e.g. qwen3-14b-96k:latest, gpt-4o) and is NOT in
+        # the Anthropic catalog; routing it through resolve() would wrongly 400 the
+        # primary Ollama-default flow. Trust the provider's model_id there (per-role
+        # model_map values are likewise provider-specific and uncatalogued).
+        if provider in (None, "anthropic"):
+            resolved_model_id = self._selector.resolve(
+                model_id or settings.session_default_model, user
+            ).model_id
+        else:
+            from app.orchestrator.roles.llm_provider import (  # noqa: PLC0415
+                default_model_for,
+            )
+
+            resolved_model_id = model_id or default_model_for(provider)
 
         # Gap 2: a workflow-template selection SEEDS the deterministic saved-
         # workflow lane. The template's steps/edges (agents.py — single source of
@@ -292,7 +302,7 @@ class WorkflowService:
             # ModelSelector/session.model_id to route the autonomous engine
             # roles. The interview/chat turn is resolved per-provider via
             # resolve_interview_model (never promoted to opus).
-            model_id=resolved_model.model_id,
+            model_id=resolved_model_id,
             domain_agent_slug=domain_agent_slug,
             team_id=user.team_id,
             # Gap 2: a template selection seeds BOTH plan_json (flips the lane
