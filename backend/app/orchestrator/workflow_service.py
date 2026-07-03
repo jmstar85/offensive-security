@@ -213,6 +213,9 @@ class WorkflowService:
         user: User,
         model_id: str | None = None,
         domain_agent_slug: str | None = None,
+        model_map: dict[str, str] | None = None,
+        mode: str = "automation",
+        provider: str | None = None,
     ) -> PentestSession:
         result = await self._db.execute(select(Project).where(Project.id == project_id))
         project = result.scalar_one_or_none()
@@ -228,10 +231,22 @@ class WorkflowService:
             interview_state="not_started",
             interview_turn_count=0,
             ambiguity_score=Decimal("1.000"),
+            # PR4: switch to settings.session_default_model (opus-4-8); keeping
+            # the current selector default here avoids referencing a setting
+            # that does not exist until PR4.
             model_id=resolved.model_id,
             domain_agent_slug=domain_agent_slug,
             team_id=user.team_id,
             draft_plan_json={},
+            # New-flow additive fields (PR1). `provider` (when present) is the
+            # selector's provider choice, persisted as llm_provider_pref
+            # (single provider field, Finding 6); NULL preserves the
+            # global-switch fallback. The operator objective is the draft
+            # prompt (the Path-B objective box == the draftPrompt textarea).
+            model_map=model_map or {},
+            mode=mode,
+            llm_provider_pref=provider,
+            objective=initial_prompt,
         )
         self._db.add(session)
         await self._db.flush()

@@ -67,6 +67,21 @@ class PentestSession(Base, UUIDMixin, TimestampMixin):
     plan_of_work_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     coordinator_revision_no: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     llm_provider_pref: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # --- New-flow provider/mode schema (migration 012) -----------------------
+    # Per-role model overrides (role -> model_id). Empty dict ⇒ the session
+    # default (model_id) applies to every role. Catalog-validation of values is
+    # deferred to PR4's ModelSelector.
+    model_map: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
+    # Session execution mode: "automation" (autonomous lane) | "assistant"
+    # (operator-driven chat). Set at create; never mutated.
+    mode: Mapped[str] = mapped_column(
+        String(16), default="automation", server_default="automation", nullable=False
+    )
+    # Path-B operator objective persisted so approve/launcher can pass it as the
+    # execution prompt. Distinct from `prompt` (the nullable=False draft seed).
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
     resume_token: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
