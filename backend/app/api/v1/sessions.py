@@ -103,23 +103,29 @@ async def create_session(
 
 
 async def _run_orchestration(session_id: uuid.UUID, prompt: str, user_id: str):
-    """Background task: runs the AI orchestrator for a session."""
-    from app.core.database import async_session
-    from app.orchestrator.service import OrchestratorService
+    """Background task: runs the AI orchestrator for a session.
 
-    async with async_session() as db:
-        try:
-            svc = OrchestratorService(db)
-            await svc.run(session_id, prompt, uuid.UUID(user_id))
-        except Exception:
-            from sqlalchemy import update
+    Path A routes through the single shared launcher (PR5) so the PM1
+    credential-context wrap lives in one place; engine behavior is otherwise
+    identical (the launcher opens the DB session + calls the same
+    ``OrchestratorService.run``). The failure fallback marks the session failed
+    on a fresh session (the launcher's own session is already closed on error).
+    """
+    from app.orchestrator.execution_launcher import launch_autonomous_execution
+
+    try:
+        await launch_autonomous_execution(session_id, prompt, user_id)
+    except Exception:
+        from app.core.database import async_session
+        from sqlalchemy import update
+        async with async_session() as db:
             await db.execute(
                 update(PentestSession)
                 .where(PentestSession.id == session_id)
                 .values(status="failed")
             )
             await db.commit()
-            raise
+        raise
 
 
 @router.get("/", response_model=list[SessionResponse])
