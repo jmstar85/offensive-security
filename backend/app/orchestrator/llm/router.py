@@ -15,7 +15,7 @@ from app.orchestrator.llm.base import LLMClient
 class LLMRouter:
     """Return the appropriate LLMClient for a given provider name."""
 
-    def get_client(self, provider: str, api_key: str) -> LLMClient:
+    def get_client(self, provider: str, api_key: str = "") -> LLMClient:
         p = provider.lower()
         if p == "anthropic":
             from app.orchestrator.llm.anthropic_provider import AnthropicProvider  # noqa: PLC0415
@@ -26,9 +26,14 @@ class LLMRouter:
         if p == "google":
             from app.orchestrator.llm.google_provider import GoogleProvider  # noqa: PLC0415
             return GoogleProvider(api_key=api_key)
+        if p == "ollama":
+            # Ollama is a local, key-less provider — no credential is required,
+            # so api_key defaults to "" and no credential lookup ever runs.
+            from app.orchestrator.ollama_client import OllamaClient  # noqa: PLC0415
+            return OllamaClient()
         raise ValueError(
             f"Unknown LLM provider: {provider!r}. "
-            "Supported values: 'anthropic', 'openai', 'google'."
+            "Supported values: 'anthropic', 'openai', 'google', 'ollama'."
         )
 
     async def route(
@@ -43,7 +48,13 @@ class LLMRouter:
         from the contextvar when user_id is None.  Each call to route() issues a
         fresh DB lookup so a revoked-then-recreated credential is picked up
         immediately on the next call without any cache invalidation step.
+
+        Ollama is short-circuited BEFORE any credential resolution: it is a
+        local, key-less provider, so no per-user credential is required and no
+        DB lookup is performed.
         """
+        if provider == "ollama":
+            return self.get_client("ollama")
         from app.orchestrator.llm.credential_resolver import resolve_provider_credential  # noqa: PLC0415
         api_key = await resolve_provider_credential(db=db, provider=provider, user_id=user_id)
         return self.get_client(provider, api_key)
