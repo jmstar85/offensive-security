@@ -3,12 +3,15 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { getMe } from './api/client'
 import { SidebarShell } from './components/layout/SidebarShell'
 import Login from './pages/Login'
+import Register from './pages/Register'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import Monitor from './pages/Monitor'
 import Reports from './pages/Reports'
 import Admin from './pages/Admin'
+import CreateUser from './pages/CreateUser'
 import PentestWorkflow from './pages/PentestWorkflow'
 import AgentCatalog from './pages/AgentCatalog'
 import WorkflowBuilder from './pages/WorkflowBuilder'
@@ -55,6 +58,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Shell><Dashboard /></Shell>} />
         <Route path="/projects" element={<Shell><Projects /></Shell>} />
@@ -75,6 +80,7 @@ export default function App() {
         <Route path="/coordinator/:sessionId" element={<Shell><CoordinatorPage /></Shell>} />
         <Route path="/auth/oauth/callback" element={<OAuthCallback />} />
         <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+        <Route path="/admin/users/new" element={<AdminRoute><CreateUser /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

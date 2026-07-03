@@ -25,8 +25,17 @@ export default api
 // Auth
 export const login = (email: string, password: string) =>
   api.post('/auth/login', { email, password })
-export const register = (email: string, password: string, full_name: string, team_name: string) =>
-  api.post('/auth/register', { email, password, full_name, team_name })
+export const register = (
+  email: string,
+  password: string,
+  full_name: string,
+  team_name?: string
+) => api.post('/auth/register', { email, password, full_name, team_name })
+export const resetPassword = (
+  email: string,
+  current_password: string,
+  new_password: string
+) => api.post('/auth/reset-password', { email, current_password, new_password })
 export const getMe = () => api.get('/auth/me')
 
 // Projects
@@ -62,7 +71,20 @@ export const downloadPdf = (id: string) =>
   api.get(`/reports/${id}/pdf`, { responseType: 'blob' })
 
 // Admin: Users
+export interface TeamRow {
+  id: string
+  name: string
+}
 export const listUsers = () => api.get('/users/')
+export const listTeams = () => api.get<TeamRow[]>('/users/teams')
+export const createUser = (data: {
+  email: string
+  full_name: string
+  password: string
+  role: string
+  team_id?: string | null
+  team_name?: string | null
+}) => api.post('/users/', data)
 export const updateUserRole = (id: string, role: string) =>
   api.patch(`/users/${id}/role`, { role })
 export const deactivateUser = (id: string) => api.delete(`/users/${id}`)

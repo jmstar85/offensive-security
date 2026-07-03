@@ -145,7 +145,17 @@ export default function Admin() {
 
       {/* Users Tab */}
       {tab === 'users' && (
-        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Link
+              to="/admin/users/new"
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition"
+              data-testid="admin-create-user"
+            >
+              + Create User
+            </Link>
+          </div>
+          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-gray-800">
               <tr>
@@ -194,6 +204,7 @@ export default function Admin() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -8,7 +8,7 @@
  * made before any other navigation happens.
  */
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2, Moon, Sun } from 'lucide-react'
 
 import { login } from '../api/client'
@@ -16,8 +16,13 @@ import { useTheme } from '../lib/theme'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
+
+  // Optional one-shot notice passed via navigation state (e.g. after sign-up
+  // when auto-login could not complete).
+  const notice = (location.state as { notice?: string } | null)?.notice
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -61,6 +66,16 @@ export default function Login() {
               Offensive Security Agent — sign in to continue
             </p>
           </header>
+
+          {notice && (
+            <p
+              role="status"
+              className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-foreground text-center"
+              data-testid="login-notice"
+            >
+              {notice}
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
@@ -118,6 +133,26 @@ export default function Login() {
                 {error}
               </p>
             )}
+
+            <div className="flex flex-col gap-2 text-center">
+              <p className="text-sm text-muted-foreground">
+                계정이 없으신가요?{' '}
+                <Link
+                  to="/register"
+                  className="text-foreground font-medium hover:underline"
+                  data-testid="login-register-link"
+                >
+                  회원가입
+                </Link>
+              </p>
+              <Link
+                to="/reset-password"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="login-reset-link"
+              >
+                비밀번호 재설정
+              </Link>
+            </div>
           </form>
         </div>
       </div>
