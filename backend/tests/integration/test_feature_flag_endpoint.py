@@ -33,9 +33,11 @@ async def test_feature_flag_endpoint_returns_current_flag_state(monkeypatch):
 
 
 def test_feature_flag_default_posture():
-    """PR10: the autonomous-lane enable flags default ON after the scanme E2E
-    verified the full loop; the multi-provider credential vault stays OFF (the
-    autonomous lane uses local Ollama via osa_llm_provider)."""
+    """PR9: the multi-provider credential vault now defaults ON alongside the
+    autonomous-lane enable flags. The resulting default flag tuple is T3
+    (multi_provider + coordinator + xbow_families) — a supported production
+    topology. Per-user credentials are the sole source; the process-env
+    ANTHROPIC_API_KEY fallback is disabled (credential_resolver.py:61-63)."""
     from app.core.config import Settings
 
     fresh = Settings(_env_file=None)
@@ -44,4 +46,4 @@ def test_feature_flag_default_posture():
     assert fresh.osa_xbow_families_enabled is True
     assert fresh.osa_xbow_autonomous_enabled is True
     assert fresh.osa_kali_backend_enabled is True
-    assert fresh.osa_multi_provider_llm is False
+    assert fresh.osa_multi_provider_llm is True

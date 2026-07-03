@@ -46,9 +46,13 @@ async def _project_with_whitelist(db, whitelist_rules):
 
 @pytest.mark.asyncio
 async def test_send_message_emits_turn_and_token_metrics(db, monkeypatch):
-    # Legacy v3.2.1 chat path (PR10 flipped osa_flow_ui_enabled default ON).
+    # Legacy v3.2.1 chat path with a mocked ModelClient. PR10 flipped
+    # osa_flow_ui_enabled default ON and PR9 flipped osa_multi_provider_llm default
+    # ON (the latter reroutes the interview turn through LLMRouter.route(user_id=...)
+    # → the per-user credential vault, bypassing the mock). Pin both OFF.
     from app.core.config import settings
     monkeypatch.setattr(settings, "osa_flow_ui_enabled", False)
+    monkeypatch.setattr(settings, "osa_multi_provider_llm", False)
     project = await _project_with_whitelist(db, {"passive_allowed": ["acme.com"]})
     user = _user()
     mock = AsyncMock()

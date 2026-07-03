@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -43,6 +43,28 @@ class Settings(BaseSettings):
         # Match the lowercasing done on the register/login lookup paths so the
         # seeded admin (written from this value) can actually log in.
         return v.strip().lower()
+
+    @model_validator(mode="after")
+    def _require_fernet_key_when_multi_provider(self) -> "Settings":
+        # When osa_multi_provider_llm is ON the per-user credential vault is the
+        # SOLE credential source: the process-env ANTHROPIC_API_KEY fallback is
+        # disabled (credential_resolver.py:61-63) and every stored credential is
+        # Fernet-encrypted at rest — so CREDENTIAL_FERNET_KEY is mandatory or the
+        # app would 500 on the first credential decrypt (security.py:get_fernet).
+        # Fail fast at startup instead. Gated to production (mirrors
+        # validate_flag_topology's production-only enforcement) so dev/test can
+        # run the flag ON while injecting a Fernet key per-test.
+        if (
+            self.environment == "production"
+            and self.osa_multi_provider_llm
+            and not self.credential_fernet_key
+        ):
+            raise ValueError(
+                "CREDENTIAL_FERNET_KEY must be set when osa_multi_provider_llm=True: "
+                "the per-user credential vault requires a Fernet key at rest and the "
+                "process-env ANTHROPIC_API_KEY fallback is disabled."
+            )
+        return self
 
     # Claude API
     anthropic_api_key: str = ""
@@ -165,8 +187,13 @@ class Settings(BaseSettings):
     credential_fernet_key: str = ""
 
     # Multi-provider LLM flag — when True, all requests MUST resolve a per-user
-    # credential row; the process-env ANTHROPIC_API_KEY fallback is disabled.
-    osa_multi_provider_llm: bool = False
+    # credential row; the process-env ANTHROPIC_API_KEY fallback is disabled
+    # (credential_resolver.py:61-63). PR9: default ON — the per-user credential
+    # vault is the sole credential source; a missing credential fails closed with
+    # CredentialNotFound on both the fresh-plan engine run AND the interview/chat
+    # turn. Resulting default flag tuple is T3 (multi_provider + coordinator +
+    # xbow_families) — a supported production topology.
+    osa_multi_provider_llm: bool = True
 
     # Coordinator service flags (PR10: coordinator default ON after verification)
     osa_coordinator_enabled: bool = True

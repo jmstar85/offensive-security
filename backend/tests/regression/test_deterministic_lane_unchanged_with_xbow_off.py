@@ -28,22 +28,24 @@ from tests._regression.v11_comparator import (
 )
 from tests.regression._live_replay_harness import run_saved_workflow_once
 
-# PR10 flipped the autonomous-lane ENABLE flags default ON. Byte-identical
-# saved-workflow replay is now preserved STRUCTURALLY (replay skips the Coordinator
-# and is gated to PlanExecutor — service.run `lane == "fresh_plan"`), NOT by these
-# flags being OFF. The flags below are the autonomous-lane enables (now ON).
+# PR10 flipped the autonomous-lane ENABLE flags default ON; PR9 flipped
+# osa_multi_provider_llm default ON. Byte-identical saved-workflow replay is
+# preserved STRUCTURALLY (replay skips the Coordinator and is gated to
+# PlanExecutor — service.run `lane == "fresh_plan"`), NOT by these flags being
+# OFF: the deterministic replay lane resolves NO LLM credential, so the
+# credential-vault flag does not touch its trace. The flags below default ON.
 _DEFAULT_ON_FLAGS = (
     "osa_coordinator_enabled",
     "osa_xbow_families_enabled",
     "osa_kali_backend_enabled",
     "osa_xbow_autonomous_enabled",
+    "osa_multi_provider_llm",
 )
 # These MUST stay OFF by default — each would alter the saved-workflow REPLAY trace
-# (coordinator runs/populates on replay) or require the credential vault.
+# (coordinator runs/populates on replay).
 _REPLAY_SAFE_OFF_FLAGS = (
     "osa_coordinator_replay_enabled",
     "osa_coordinator_populate_on_replay",
-    "osa_multi_provider_llm",
 )
 
 

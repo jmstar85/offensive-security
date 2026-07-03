@@ -16,12 +16,18 @@ from app.orchestrator.workflow_service import WorkflowService
 
 @pytest.fixture(autouse=True)
 def _legacy_chat_path(monkeypatch):
-    """These tests exercise the legacy v3.2.1 chat path. PR10 flipped
-    osa_flow_ui_enabled default ON (routes through AmbiguityLoop); pin it OFF here so
-    this file keeps testing the legacy path it was written for."""
+    """These tests exercise the legacy v3.2.1 chat path with a mocked ModelClient.
+    Two default flips would reroute them off that path, so pin both OFF here:
+    - PR10 flipped osa_flow_ui_enabled default ON (routes through AmbiguityLoop);
+    - PR9 flipped osa_multi_provider_llm default ON (the interview/chat turn then
+      routes through LLMRouter.route(user_id=...) → the per-user credential vault,
+      bypassing the injected model_client and failing closed with
+      CredentialNotFound). Pinning it OFF keeps the legacy single-provider path
+      these tests were written for."""
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "osa_flow_ui_enabled", False)
+    monkeypatch.setattr(settings, "osa_multi_provider_llm", False)
 
 
 def _user(role=UserRole.MEMBER):
