@@ -103,6 +103,22 @@ export const createPentestDraft = (data: {
   initial_prompt: string
   model_id?: string | null
   domain_agent_slug?: string | null
+  // Newflow additive fields (PR8). `provider` persists as session
+  // llm_provider_pref; `model_map` is the per-role override dict (empty =
+  // session default only); `mode` is "automation" | "assistant", fixed at
+  // create. All optional/backward-compatible — omitting them yields the
+  // server defaults (NULL / {} / "automation").
+  provider?: 'anthropic' | 'ollama' | 'openai' | null
+  model_map?: Record<string, string>
+  mode?: 'automation' | 'assistant'
+  // Workflow-template preset selection (recon-only/web-pentest/full-scope,
+  // from getTemplates()). NOTE: CreateDraftBody does not yet have a
+  // template/plan_json seed field, so the backend currently ignores this
+  // (Pydantic extra="ignore") — it is forwarded so a follow-up backend PR
+  // can wire it to seed draft_plan_json/the deterministic lane without a
+  // frontend change. Until then the template selection only prefills the
+  // objective textarea client-side.
+  template_id?: string | null
 }) => api.post('/pentest-sessions/', data)
 
 export const getPentestSession = (id: string) =>
@@ -110,6 +126,19 @@ export const getPentestSession = (id: string) =>
 
 export const sendPentestMessage = (id: string, content: string) =>
   api.post(`/pentest-sessions/${id}/messages`, { content })
+
+// Assistant mode (newflow PR7/PR8) — interactive chat turn. 409 when
+// session.mode != "assistant" or a turn is already in progress (per-session
+// turn mutex); the caller surfaces that as an inline notice rather than a
+// hard error.
+export interface AssistantMessageResponse {
+  role: string
+  content: string
+  [key: string]: unknown
+}
+
+export const sendAssistantMessage = (id: string, content: string) =>
+  api.post<AssistantMessageResponse>(`/pentest-sessions/${id}/assistant/messages`, { content })
 
 export const forceReadyForReview = (id: string, override_reason: string) =>
   api.post(`/pentest-sessions/${id}/force-ready-for-review`, { override_reason })

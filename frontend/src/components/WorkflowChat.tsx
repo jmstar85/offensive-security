@@ -30,6 +30,11 @@ interface Props {
   onSend: (text: string) => void | Promise<void>
   askPrompts?: AskPrompt[]
   onAskReply?: (promptId: string, reply: string) => void | Promise<void>
+  /** Panel heading. Defaults to "Interview" (Coordinator flow); the Assistant
+   * mode chat surface (newflow PR8) passes "Assistant" to reuse this panel. */
+  title?: string
+  /** Placeholder for the input box when not disabled. */
+  placeholder?: string
 }
 
 export default function WorkflowChat({
@@ -41,6 +46,8 @@ export default function WorkflowChat({
   onSend,
   askPrompts,
   onAskReply,
+  title = 'Interview',
+  placeholder = 'Reply to the AI…',
 }: Props) {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -69,7 +76,7 @@ export default function WorkflowChat({
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-200">Interview</h2>
+        <h2 className="text-sm font-semibold text-gray-200">{title}</h2>
         <div className="text-xs text-gray-500 flex gap-3">
           {ambiguityScore !== undefined && (
             <span>
@@ -86,7 +93,9 @@ export default function WorkflowChat({
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <p className="text-sm text-gray-500">
-            Start the interview by describing the target environment.
+            {title === 'Assistant'
+              ? 'Send a message to start driving the engagement interactively.'
+              : 'Start the interview by describing the target environment.'}
           </p>
         )}
         {messages.map((m, i) => (
@@ -162,7 +171,7 @@ export default function WorkflowChat({
           placeholder={
             disabled
               ? 'Interview locked — review the draft on the right.'
-              : 'Reply to the AI…'
+              : placeholder
           }
           className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500 resize-none h-14 disabled:opacity-50"
         />
