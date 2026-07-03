@@ -137,7 +137,8 @@ async def test_adviser_routes_as_subrole_off_shared_performer():
         new=AsyncMock(return_value="sk-fake"),
     ):
         out = await delegate_tool_call(
-            performer, "adviser", {"trigger_reason": "same_tool_called_5_times"}
+            performer, "adviser", {"trigger_reason": "same_tool_called_5_times"},
+            allow_role_invocation=True,
         )
 
     assert out["kind"] == "role"
@@ -280,7 +281,7 @@ def test_delegator_raise_survives_python_O():
         async def main() -> int:
             p = Performer(AsyncMock(), uuid.uuid4())  # empty context: no role_client_inputs
             try:
-                await delegate_tool_call(p, "adviser", {})
+                await delegate_tool_call(p, "adviser", {}, allow_role_invocation=True)
             except RuntimeError:
                 print("RAISED")
                 return 0

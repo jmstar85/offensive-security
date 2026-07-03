@@ -66,7 +66,12 @@ async def _dispatch_palette(performer: Any, slugs: list[str]) -> list[dict]:
 
     outcomes: list[dict] = []
     for slug in slugs:
-        delegated = await delegate_tool_call(performer, slug, {"config": {}})
+        # Trusted automation-lane dispatch (PR7 Improvement 2): allow sub-role
+        # invocation. Palettes are adapter slugs today, but this keeps the
+        # automation lane's dispatch semantics consistent with the Pentester loop.
+        delegated = await delegate_tool_call(
+            performer, slug, {"config": {}}, allow_role_invocation=True
+        )
         result = delegated.get("result", {}) if isinstance(delegated, dict) else {}
         outcomes.append({
             "tool": slug,

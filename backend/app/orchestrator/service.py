@@ -22,8 +22,8 @@ from app.agents.registry import get_tool_entry
 from app.safety.audit import AuditLogger
 from app.safety.audit_kali import persist_kali_blocked_steps
 from app.safety.exploit_allowlist import filter_by_tier_flags, filter_plan_steps
+from app.orchestrator.scope import validate_session_target
 from app.safety.risk_filter import RiskFilter
-from app.safety.whitelist import WhitelistValidator
 
 # Claude API rate limiting: max 5 prompts/min per session (simple token bucket)
 _rate_buckets: dict[str, tuple[float, int]] = {}
@@ -78,9 +78,11 @@ class OrchestratorService:
         }
         whitelist_rules = target_obj.whitelist_rules if target_obj else {}
 
-        # 3. Whitelist validation (Layer 1)
-        validator = WhitelistValidator(whitelist_rules)
-        is_valid, violations = validator.validate_target(target)
+        # 3. Whitelist validation (Layer 1) — via the SHARED session-start scope
+        # gate (PR7 / PM2-B). Pure refactor of the prior inline
+        # WhitelistValidator(...).validate_target(...) call; AssistantService.turn
+        # runs the SAME callable so both lanes gate the session target identically.
+        is_valid, violations = validate_session_target(target, whitelist_rules)
         if not is_valid:
             await self._audit.log(
                 action="whitelist_violation",

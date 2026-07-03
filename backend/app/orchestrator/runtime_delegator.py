@@ -22,6 +22,7 @@ import logging
 from typing import Any
 
 from app.agents.registry import list_agent_types
+from app.core.config import settings
 from app.orchestrator.performer import Performer
 from app.orchestrator.roles.base import RoleResult
 from app.orchestrator.roles.llm_provider import build_client_factory
@@ -41,17 +42,53 @@ async def delegate_tool_call(
     performer: Performer,
     tool_slug: str,
     payload: dict[str, Any],
+    allow_role_invocation: bool = False,
 ) -> dict[str, Any]:
     """Resolve a runtime tool call to either an adapter dispatch or a sub-role.
 
-    Returns a dict with `{kind: "adapter"|"role", result: ...}` so the
-    calling chain can persist the right MsgChain entry.
+    Returns a dict with `{kind: "adapter"|"role"|"refused"|"unknown", result: ...}`
+    so the calling chain can persist the right MsgChain entry.
+
+    **Outbound containment (PR7 / Improvement 2 / Finding 3 / PM2-D-out).** The
+    ``ROLE_REGISTRY`` role-invocation branch is DEFAULT-DENY: it is reachable ONLY
+    when the caller explicitly passes ``allow_role_invocation=True`` — which ONLY
+    the trusted automation lane does (the Pentester loop / seed_xbow dispatch).
+    ``AssistantService`` calls with the default ``False``, so an operator-emitted
+    ``{"tool":"pentester"}`` / ``{"tool":"adviser"}`` / ``{"tool":"memorist"}``
+    can never launch that role as a sub-role — containment holds by construction
+    for every current AND future untrusted caller, not by an ``AssistantService``
+    convention. Because ``list_agent_types()`` is checked FIRST and the two
+    namespaces are disjoint (test-enforced), no colliding slug can bypass this
+    role-reject via the adapter path.
     """
     if tool_slug in list_agent_types():
         adapter_result = await performer._dispatch_tool(tool_slug, payload)
         return {"kind": "adapter", "result": adapter_result}
 
     if tool_slug in ROLE_REGISTRY:
+        # Default-deny: only the trusted automation lane may invoke a role as a
+        # sub-role. Untrusted callers (AssistantService) get a refusal, NOT a launch.
+        if not allow_role_invocation:
+            return {
+                "kind": "refused",
+                "result": {
+                    "approved": False,
+                    "blocked_reason": f"role_invocation_denied:{tool_slug}",
+                },
+            }
+
+        # Recursion/cost cap (PR7): bound nested role launches independent of the
+        # per-session lease. The Performer carries the depth counter.
+        max_depth = getattr(settings, "max_sub_role_depth", 3)
+        if performer.state.sub_role_depth >= max_depth:
+            return {
+                "kind": "depth_capped",
+                "result": {
+                    "approved": False,
+                    "blocked_reason": f"sub_role_depth_exceeded:{tool_slug}",
+                },
+            }
+
         role_cls = get_role(tool_slug)
         role = role_cls()
         # PR6 (A1b / Finding 1): a sub-role invoked here shares the SAME performer
@@ -73,9 +110,13 @@ async def delegate_tool_call(
                 "client_factory but performer.state.context['role_client_inputs'] is "
                 "absent (Blocking 3: explicit raise, not assert)."
             )
-        run_result: RoleResult = await role.run(
-            performer=performer, context=payload, client_factory=client_factory
-        )
+        performer.state.sub_role_depth += 1
+        try:
+            run_result: RoleResult = await role.run(
+                performer=performer, context=payload, client_factory=client_factory
+            )
+        finally:
+            performer.state.sub_role_depth -= 1
         return {
             "kind": "role",
             "result": {

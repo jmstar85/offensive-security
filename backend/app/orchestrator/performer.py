@@ -90,6 +90,12 @@ class PerformerSession:
     actor_id: str | None = None
     egress_monitor: Any | None = None
     findings: list[dict] = field(default_factory=list)
+    # PR7: nested sub-role launch depth. Incremented/decremented by
+    # ``delegate_tool_call``'s ROLE_REGISTRY branch (only reachable when a trusted
+    # automation caller passes ``allow_role_invocation=True``) so a role that
+    # launches another role is bounded by ``settings.max_sub_role_depth``,
+    # independent of the per-session concurrency lease.
+    sub_role_depth: int = 0
 
 
 class Performer:

@@ -143,6 +143,12 @@ class Settings(BaseSettings):
     # Performer engine (ADR-003 concurrency model; SF-3 cap)
     performer_max_iter: int = 64
     max_concurrent_performer_sessions: int = 4
+    # PR7: bound nested role launches through delegate_tool_call (only reachable
+    # on the trusted automation lane, allow_role_invocation=True) — independent of
+    # the per-session lease and the Assistant per-session turn mutex.
+    max_sub_role_depth: int = 3
+    # PR7: per-turn tool-dispatch step cap for the role-free AssistantService loop.
+    assistant_max_steps_per_turn: int = 16
 
     # PentAGI brakes adopted in v4.0 (Adviser injection thresholds; Reflector retry counts)
     adviser_trigger_same_tool: int = 5
