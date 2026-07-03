@@ -1,20 +1,31 @@
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt is used directly rather than through passlib: passlib 1.7.4 (its final
+# release) crashes its backend self-test against bcrypt >= 4.1 / 5.x. The bcrypt
+# algorithm only consumes the first 72 bytes of the password; we truncate to
+# match that limit (bcrypt >= 4 raises on longer input) and to stay compatible
+# with hashes previously produced via passlib's bcrypt backend.
+_BCRYPT_MAX_BYTES = 72
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pwd = password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    return bcrypt.hashpw(pwd, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(
+            plain.encode("utf-8")[:_BCRYPT_MAX_BYTES], hashed.encode("utf-8")
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(subject: str) -> str:

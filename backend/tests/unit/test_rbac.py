@@ -2,7 +2,7 @@
 
 Tests:
   - UserRole enum validation
-  - Registration defaults to member
+  - Registration uses the configured signup role (full-access "admin" for now)
   - require_admin dependency blocks members
   - require_admin allows admins
   - get_current_user rejects inactive users
@@ -169,13 +169,27 @@ class TestGetCurrentUserActive:
 
 
 class TestRegistrationRole:
-    """Verify that auth.py register creates users with role=member."""
+    """Public self-signup provisions accounts with the configured signup role.
 
-    def test_register_source_code_uses_member(self):
-        """Static check: the register endpoint must use role='member'."""
-        import inspect
-        from app.api.v1.auth import register
+    For now settings.default_signup_role is "admin", so every registrant has
+    full access and admin/regular users are not distinguished. Setting
+    DEFAULT_SIGNUP_ROLE=member re-introduces the split.
+    """
 
-        source = inspect.getsource(register)
-        assert 'role="member"' in source
-        assert 'role="admin"' not in source
+    def test_default_signup_role_grants_full_access(self):
+        from app.core.config import settings
+
+        assert settings.default_signup_role == "admin"
+
+    async def test_register_uses_configured_signup_role(self, db: AsyncSession):
+        from app.api.v1.auth import RegisterRequest, register
+        from app.core.config import settings
+
+        body = RegisterRequest(
+            email="signup@example.com",
+            password="MemberPass123",
+            full_name="Signup User",
+        )
+        with patch("app.api.v1.auth.hash_password", side_effect=lambda p: f"h::{p}"):
+            resp = await register(body=body, db=db)
+        assert resp.role == settings.default_signup_role
