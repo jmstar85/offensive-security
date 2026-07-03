@@ -41,10 +41,23 @@ class Role(ABC):
     max_tool_calls: int = 20
 
     @abstractmethod
-    async def run(self, performer: "Performer", context: dict[str, Any]) -> RoleResult:  # type: ignore[name-defined]
+    async def run(
+        self,
+        performer: "Performer",  # type: ignore[name-defined]
+        context: dict[str, Any],
+        client_factory: Any = None,
+    ) -> RoleResult:
         """Execute one chain of this role within a Performer session.
 
         Concrete implementations ship in P2a. The abstract method ensures the
         Role contract is uniform across the 6 roles.
+
+        ``client_factory`` (PR6, Improvement 3) is the per-invocation, user-id
+        bound ``client_factory(role_name)`` callable injected uniformly at the
+        two role-launch chokepoints (``run_session``'s ``reflector_wrap`` and
+        ``delegate_tool_call``). Consuming roles resolve their LLM client via
+        it; non-consuming roles accept-and-ignore it. It carries ``=None`` so a
+        future role subclassing this base fails closed at build time if it
+        forgets the kwarg (round-6 signature contract).
         """
         raise NotImplementedError("Concrete roles override run() in P2a")

@@ -89,7 +89,10 @@ class SessionManagementAgent(Role):
     slug = "session_management_agent"
     name = "session_management_agent"
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
+        # Non-consuming role: ``client_factory`` (PR6) accepted-and-ignored.
         vector = context.get("attack_vector", AttackVector.UNKNOWN)
         return RoleResult(
             role_name=self.slug,
@@ -102,7 +105,10 @@ class DiscoveryAgent(Role):
     slug = "discovery_agent"
     name = "discovery_agent"
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
+        # Non-consuming role: ``client_factory`` (PR6) accepted-and-ignored.
         vector = coerce_vector(context.get("attack_vector", AttackVector.UNKNOWN))
         palette = vector_to_tool_palette.get(vector, [])
         if not _is_bound(performer) or not palette:
@@ -126,7 +132,10 @@ class AttackAgent(Role):
     slug = "attack_agent"
     name = "attack_agent"
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
+        # Non-consuming role: ``client_factory`` (PR6) accepted-and-ignored.
         from app.core.config import settings
         vector = coerce_vector(context.get("attack_vector", AttackVector.UNKNOWN))
         palette = vector_to_tool_palette.get(vector, [])

@@ -167,6 +167,22 @@ class Performer:
                 )
                 return []
 
+            # PR6 (A1b / Improvement 3): build the per-invocation, user-id bound
+            # client_factory from the session-constant inputs stored ONCE by
+            # _run_autonomous_lane. No minted client lives in context — only the
+            # {db, session, actor_id} inputs — so the no-session-cache guarantee
+            # (Blocking 2) holds. Absent role_client_inputs (legacy / non-autonomous
+            # callers), client_factory stays None and roles fall back to their
+            # existing behavior. The kwarg is forwarded uniformly to EVERY role via
+            # reflector_wrap's **kwargs passthrough, so non-consuming roles must
+            # accept-and-ignore it (round-6 signature contract).
+            role_client_inputs = self.state.context.get("role_client_inputs")
+            client_factory = None
+            if role_client_inputs:
+                from app.orchestrator.roles.llm_provider import build_client_factory
+
+                client_factory = build_client_factory(**role_client_inputs)
+
             results: list[RoleResult] = []
             for role_name in ROLE_TOPOLOGICAL_ORDER:
                 role = self.state.roles.get(role_name)
@@ -185,7 +201,10 @@ class Performer:
                     break
 
                 result = await reflector_wrap(
-                    role.run, performer=self, context=self.state.context
+                    role.run,
+                    performer=self,
+                    context=self.state.context,
+                    client_factory=client_factory,
                 )
                 await self._publish_role_turn(role_name, result)
                 results.append(result)

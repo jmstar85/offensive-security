@@ -315,6 +315,7 @@ class OrchestratorService:
         if getattr(settings, "osa_xbow_autonomous_enabled", False) and lane == "fresh_plan":
             findings = await self._run_autonomous_lane(
                 session_id=session_id,
+                session=session,
                 prompt=prompt,
                 steps=approved_steps,
                 target=target,
@@ -365,6 +366,7 @@ class OrchestratorService:
         self,
         *,
         session_id: uuid.UUID,
+        session: PentestSession,
         prompt: str,
         steps: list[dict],
         target: dict,
@@ -398,6 +400,17 @@ class OrchestratorService:
         # loop knows WHAT to do (without the objective the LLM has no task).
         performer.state.context["objective"] = prompt
         performer.state.context["approved_steps"] = list(steps)
+
+        # PR6 (A1b / Blocking 2): store ONLY the session-constant inputs used to
+        # build the per-role client_factory — never a minted client. run_session
+        # and delegate_tool_call build the factory from these on every invocation,
+        # so a mid-session credential revoke is honored on the next role call and
+        # last_used_at/audit is written on every resolve (no session-lived cache).
+        performer.state.context["role_client_inputs"] = {
+            "db": self._db,
+            "session": session,
+            "actor_id": actor_id,
+        }
 
         # Understanding-driven dispatch (PR6 / C3): derive the AttackVector from the
         # session's Understanding to PRIORITIZE the executor's palette. The Pentester

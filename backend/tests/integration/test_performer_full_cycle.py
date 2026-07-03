@@ -161,7 +161,7 @@ async def test_run_session_halts_on_role_error_after_reflector_retries():
     class _FailingRole(Role):
         slug: str = "generator"
 
-        async def run(self, performer, context):
+        async def run(self, performer, context, client_factory=None):
             raise RuntimeError("persistent generator failure")
 
     performer.register_role(

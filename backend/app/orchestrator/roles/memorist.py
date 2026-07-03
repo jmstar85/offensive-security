@@ -77,9 +77,15 @@ class Memorist(Role):
             max_tool_calls=settings.limited_role_max_tool_calls,
         )
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
         """Smoke implementation for P2a. Returns empty findings — P4 wires
-        the actual pgvector lookup via the helper above."""
+        the actual pgvector lookup via the helper above.
+
+        Non-consuming role: ``client_factory`` (PR6) is accepted-and-ignored so
+        the uniform launch site can forward it to every role without a
+        ``TypeError``."""
         return RoleResult(
             role_name=self.name,
             messages=[],

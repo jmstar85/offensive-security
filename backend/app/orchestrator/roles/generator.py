@@ -19,8 +19,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
+from app.orchestrator.llm.credential_resolver import CredentialNotFound
 from app.orchestrator.roles.base import Role, RoleResult
 from app.orchestrator.roles.llm_provider import (
+    context_is_bound_live,
     resolve_role_client,
     resolve_role_llm_model,
     resolve_role_send_model,
@@ -63,7 +65,9 @@ class Generator(Role):
             max_tool_calls=settings.limited_role_max_tool_calls,
         )
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
         """Generator turn — produces the v3.2.1-compatible chat envelope.
 
         Live path (v4.0 P4 wiring, gap-fill 2/3):
@@ -83,11 +87,24 @@ class Generator(Role):
         user_content = str(context.get("user_content", ""))
         history = list(context.get("history") or [])
         memory_hits = list(context.get("memory_hits") or [])
-        # PR3: provider-aware client resolution. Injected client wins; else Ollama
-        # when osa_llm_provider="ollama"; else None → smoke fallback below.
-        client = resolve_role_client(context.get("model_client"))
+        # PR6 (Improvement 3 / Blocking 2): the injected ``client_factory`` resolves
+        # PER INVOCATION (fresh route() each call, no session cache) and propagates
+        # CredentialNotFound. Absent it, keep the PR3 legacy path byte-identical:
+        # injected model_client wins; else Ollama when osa_llm_provider="ollama";
+        # else None → smoke fallback below.
+        if client_factory is not None:
+            client = await client_factory(self.name)
+        else:
+            client = resolve_role_client(context.get("model_client"))
 
         if client is None:
+            # Fail-closed guard (PR6, Principle 7 / AC#10): on the BOUND LIVE lane
+            # a missing client is an error, never a fabricated smoke envelope.
+            if context_is_bound_live(performer):
+                raise CredentialNotFound(
+                    f"no LLM client resolved for role={self.name!r} on the bound "
+                    "live lane (fail-closed: never smoke on a live run)"
+                )
             # Smoke fallback — used by unit tests and any caller that has
             # not provisioned a ModelClient (e.g. local offline runs).
             envelope = {

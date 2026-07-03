@@ -17,8 +17,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
+from app.orchestrator.llm.credential_resolver import CredentialNotFound
 from app.orchestrator.roles.base import Role, RoleResult
 from app.orchestrator.roles.llm_provider import (
+    context_is_bound_live,
     resolve_role_client,
     resolve_role_llm_model,
     resolve_role_send_model,
@@ -48,12 +50,21 @@ class Adviser(Role):
             max_tool_calls=0,
         )
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
         """Emit a single guidance message based on the trigger reason in `context`.
 
         Live path (PR4b): when an LLM client is resolved, ask it for a concise
         corrective instruction grounded in the calling chain's recent activity.
         Fallback: a static guidance message (smoke / offline / Ollama unreachable).
+
+        Client resolution (PR6): the injected ``client_factory`` resolves the
+        Adviser client PER INVOCATION off the SHARED ``performer`` — this is the
+        Finding-1 fix that makes Adviser route correctly when invoked as a
+        SUB-ROLE via ``delegate_tool_call`` (it no longer needs
+        ``context["model_client"]``). Absent the factory, the legacy path is
+        byte-identical. On the bound live lane a ``None`` client fails closed.
         """
         reason = context.get("trigger_reason", "loop_detected")
         static_message = (
@@ -63,8 +74,16 @@ class Adviser(Role):
             "`ask` to escalate to the operator."
         )
 
-        client = resolve_role_client(context.get("model_client"))
+        if client_factory is not None:
+            client = await client_factory(self.name)
+        else:
+            client = resolve_role_client(context.get("model_client"))
         if client is None:
+            if context_is_bound_live(performer):
+                raise CredentialNotFound(
+                    f"no LLM client resolved for role={self.name!r} on the bound "
+                    "live lane (fail-closed: never smoke on a live run)"
+                )
             return RoleResult(
                 role_name=self.name,
                 messages=[{"role": "assistant", "content": static_message}],

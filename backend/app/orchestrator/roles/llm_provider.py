@@ -36,6 +36,19 @@ def _provider() -> str:
     return getattr(settings, "osa_llm_provider", "anthropic")
 
 
+def context_is_bound_live(performer: Any) -> bool:
+    """True when *performer* is bound to a live execution context (PR4a).
+
+    The bound-live marker is a non-None ``performer.state.egress_monitor`` (set
+    by ``Performer.bind_live_execution``). Consuming roles use this to decide
+    whether a ``None`` client is a fail-closed error (live lane → raise
+    ``CredentialNotFound``) or an acceptable smoke fallback (unbound/demo).
+    Tolerant of ``performer is None`` (unbound unit contexts).
+    """
+    state = getattr(performer, "state", None)
+    return getattr(state, "egress_monitor", None) is not None
+
+
 def resolve_role_client(injected: Any | None = None) -> Any | None:
     """Resolve the LLM client a role should use this turn.
 

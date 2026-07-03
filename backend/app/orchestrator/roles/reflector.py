@@ -92,9 +92,13 @@ class Reflector(Role):
             max_tool_calls=0,
         )
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
         """Reflector is invoked as a wrapper, not as a top-level role. Calling
         `run()` directly returns a no-op result; the real work is in `wrap()`.
+
+        Non-consuming role: ``client_factory`` (PR6) is accepted-and-ignored.
         """
         return RoleResult(role_name=self.name, messages=[], finished=True, tool_calls=0)
 

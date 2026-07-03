@@ -39,9 +39,15 @@ class Reporter(Role):
             max_tool_calls=settings.limited_role_max_tool_calls,
         )
 
-    async def run(self, performer: Any, context: dict[str, Any]) -> RoleResult:
+    async def run(
+        self, performer: Any, context: dict[str, Any], client_factory: Any = None
+    ) -> RoleResult:
         """Invoke `ReportGenerator.generate(...)` to produce the final Report
         row from accumulated findings + plan (v4.0 gap-fill).
+
+        Non-consuming role: ``client_factory`` (PR6) is accepted-and-ignored —
+        the Reporter produces no model output, so it MUST NOT resolve a client
+        (no phantom credential touch).
 
         Requires the calling context to provide:
         - `performer.state.db` — AsyncSession (Performer-managed)
