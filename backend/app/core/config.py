@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     # model ids are namespaced ``copilot/<model>`` so per-role routing can
     # disambiguate them from bare openai/anthropic ids.
     github_copilot_client_id: str = "Iv1.b507a08c87ecfe98"
-    github_copilot_default_model: str = "copilot/gpt-4o"
+    github_copilot_default_model: str = "copilot/gpt-4.1"
 
     # Interview loop
     workflow_max_interview_turns: int = 6

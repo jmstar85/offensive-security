@@ -15,6 +15,7 @@ from app.api.v1 import domain_agents as domain_agents_router
 from app.api.v1 import pentest_sessions as pentest_sessions_router
 from app.api.v1 import feature_flags as feature_flags_router
 from app.api.v1 import ollama_models as ollama_models_router
+from app.api.v1 import copilot_models as copilot_models_router
 from app.api.v1 import coordinator as coordinator_router
 from app.api.v1 import ws
 from app.core.config import settings
@@ -194,6 +195,11 @@ app.include_router(
     ollama_models_router.router,
     prefix=settings.api_prefix,
     tags=["ollama"],
+)
+app.include_router(
+    copilot_models_router.router,
+    prefix=settings.api_prefix,
+    tags=["copilot"],
 )
 app.include_router(
     credentials_router.router,

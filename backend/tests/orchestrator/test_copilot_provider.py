@@ -65,7 +65,7 @@ def test_provider_of_copilot():
 
 
 def test_default_model_for_copilot():
-    assert default_model_for("copilot") == "copilot/gpt-4o"
+    assert default_model_for("copilot") == "copilot/gpt-4.1"
 
 
 def test_router_get_client_copilot():

@@ -23,6 +23,7 @@ from app.orchestrator.model_client import Response
 
 _COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
 _COPILOT_CHAT_URL = "https://api.githubcopilot.com/chat/completions"
+_COPILOT_MODELS_URL = "https://api.githubcopilot.com/models"
 
 # Editor identity headers Copilot's backend expects from an integration.
 _EDITOR_HEADERS = {
@@ -75,6 +76,42 @@ class CopilotProvider(LLMClient):
         # expires_at is a unix timestamp; default to a 25-minute lifetime if absent.
         self._copilot_token_exp = float(data.get("expires_at") or (time.time() + 1500))
         return token
+
+    async def list_models(self) -> list[str]:
+        """Return the bare model ids Copilot currently offers this account.
+
+        Hits Copilot's own ``/models`` catalog (the same list the editor model
+        picker uses), so the UI always shows the latest available models rather
+        than a hardcoded set that ages. Ids are bare (``gpt-4.1``); callers
+        namespace them ``copilot/<id>`` for per-role routing.
+        """
+        copilot_token = await self._ensure_copilot_token()
+        headers = {
+            "Authorization": f"Bearer {copilot_token}",
+            "Accept": "application/json",
+            **_EDITOR_HEADERS,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(_COPILOT_MODELS_URL, headers=headers)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise ModelUnreachable(f"GitHub Copilot models endpoint unreachable: {exc!r}") from exc
+        if resp.status_code >= 500:
+            raise ModelUnreachable(f"GitHub Copilot models endpoint 5xx: {resp.status_code}")
+        if resp.status_code != 200:
+            raise ModelUnreachable(f"GitHub Copilot models list failed ({resp.status_code})")
+        data = resp.json()
+        # OpenAI-style {"data": [{"id": ...}]}; de-dupe, preserve order.
+        seen: set[str] = set()
+        out: list[str] = []
+        for m in data.get("data") or []:
+            mid = m.get("id")
+            # Some entries expose model_picker_enabled / capabilities; keep chat
+            # models only when the flag is present, else keep everything.
+            if mid and mid not in seen and m.get("model_picker_enabled", True):
+                seen.add(mid)
+                out.append(mid)
+        return out
 
     async def send(
         self,
