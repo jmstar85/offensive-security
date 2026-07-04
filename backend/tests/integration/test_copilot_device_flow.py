@@ -187,3 +187,77 @@ async def test_device_poll_access_denied():
         )
     assert resp.status == "denied"
     assert state not in cred._oauth_pending
+
+
+@pytest.mark.asyncio
+async def test_device_poll_rate_limited_skips_github_call():
+    """A poll within `interval` of the last GitHub call returns pending WITHOUT
+    hitting GitHub — the server-side cap that prevents over-polling → slow_down."""
+    from app.api.v1 import credentials as cred
+
+    user = _mock_user()
+    state = cred._make_state_token(str(user.id))
+    cred._oauth_pending[state] = {
+        "user_id": str(user.id),
+        "device_code": "dc",
+        "provider": "copilot",
+        "interval": 5,
+        "expires_at": datetime(2099, 1, 1, tzinfo=timezone.utc),
+        "last_poll_at": datetime.now(timezone.utc),  # just polled
+    }
+    called = {"post": False}
+
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **k):
+            called["post"] = True
+            return _Resp(200, {"error": "authorization_pending"})
+
+    with patch("app.api.v1.credentials.httpx.AsyncClient", _C):
+        resp = await cred.device_flow_poll(
+            provider="copilot",
+            body=cred.DevicePollRequest(state=state),
+            db=MagicMock(),
+            current_user=user,
+        )
+    assert resp.status == "pending"
+    assert called["post"] is False  # GitHub was NOT polled (rate-limited)
+    del cred._oauth_pending[state]
+
+
+@pytest.mark.asyncio
+async def test_device_poll_slow_down_backs_off_interval():
+    """GitHub `slow_down` → still pending, but the stored interval is bumped so
+    the next real GitHub poll waits longer."""
+    from app.api.v1 import credentials as cred
+
+    user = _mock_user()
+    state = cred._make_state_token(str(user.id))
+    cred._oauth_pending[state] = {
+        "user_id": str(user.id),
+        "device_code": "dc",
+        "provider": "copilot",
+        "interval": 5,
+        "expires_at": datetime(2099, 1, 1, tzinfo=timezone.utc),
+    }
+    with patch(
+        "app.api.v1.credentials.httpx.AsyncClient",
+        _fake_client(_Resp(200, {"error": "slow_down", "interval": 10})),
+    ):
+        resp = await cred.device_flow_poll(
+            provider="copilot",
+            body=cred.DevicePollRequest(state=state),
+            db=MagicMock(),
+            current_user=user,
+        )
+    assert resp.status == "pending"
+    assert cred._oauth_pending[state]["interval"] == 10  # backed off
+    del cred._oauth_pending[state]

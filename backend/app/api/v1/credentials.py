@@ -516,6 +516,20 @@ async def device_flow_poll(
         del _oauth_pending[body.state]
         return DevicePollResponse(status="expired")
 
+    # Server-side poll-rate cap. GitHub's device token endpoint returns
+    # `slow_down` (and WITHHOLDS the token, even after the user authorizes) if
+    # polled faster than the interval. The browser may run multiple/overlapping
+    # poll timers (React StrictMode double-invoke, re-selects), so enforce the
+    # interval HERE: never hit GitHub more than once per interval per device
+    # code, regardless of how often the client polls. Too-soon polls report
+    # `pending` without a GitHub round-trip.
+    now = datetime.now(timezone.utc)
+    interval = int(pending.get("interval", 5))
+    last_poll = pending.get("last_poll_at")
+    if last_poll is not None and (now - last_poll).total_seconds() < interval:
+        return DevicePollResponse(status="pending")
+    pending["last_poll_at"] = now
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -562,5 +576,10 @@ async def device_flow_poll(
     if error == "expired_token":
         del _oauth_pending[body.state]
         return DevicePollResponse(status="expired")
-    # authorization_pending / slow_down / transient → keep polling.
+    if error == "slow_down":
+        # GitHub is rate-limiting us — adopt the (higher) interval it returns so
+        # the next real GitHub poll waits longer.
+        pending["interval"] = int(data.get("interval", interval + 5))
+        return DevicePollResponse(status="pending")
+    # authorization_pending / transient → keep polling.
     return DevicePollResponse(status="pending")

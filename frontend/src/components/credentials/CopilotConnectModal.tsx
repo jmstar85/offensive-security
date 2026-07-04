@@ -25,6 +25,11 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<string | null>(null);
+  // Generation counter: each start() bumps it; async continuations bail when
+  // superseded (StrictMode double-invoke / "Try again" / unmount), so no
+  // orphaned poll loop survives. failuresRef tolerates transient poll blips.
+  const genRef = useRef(0);
+  const failuresRef = useRef(0);
 
   const clearTimers = useCallback(() => {
     if (pollTimerRef.current) {
@@ -38,6 +43,8 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
   }, []);
 
   const start = useCallback(async () => {
+    const gen = ++genRef.current; // new generation — supersedes any prior run
+    failuresRef.current = 0;
     clearTimers();
     setErrorMsg(null);
     setPhase("starting");
@@ -45,6 +52,7 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
     setVerificationUri(null);
     try {
       const res = await startCopilotDevice();
+      if (genRef.current !== gen) return; // superseded while awaiting
       stateRef.current = res.state;
       setUserCode(res.user_code);
       setVerificationUri(res.verification_uri);
@@ -52,17 +60,31 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
 
       const intervalMs = (res.interval || DEFAULT_INTERVAL_SEC) * 1000;
 
+      // A SINGLE, non-overlapping poll loop: a self-rescheduling setTimeout
+      // (not setInterval) that only fires the next poll after the previous
+      // response, always waiting the full interval. This — plus the generation
+      // guard — guarantees GitHub is never polled by overlapping/duplicate
+      // timers, which would trip its `slow_down` rate limit and stall the flow.
+      const scheduleNext = () => {
+        pollTimerRef.current = setTimeout(doPoll, intervalMs);
+      };
+
       const doPoll = async () => {
+        if (genRef.current !== gen) return;
         const currentState = stateRef.current;
         if (!currentState) return;
         try {
           const result = await pollCopilotDevice(currentState);
+          if (genRef.current !== gen) return;
+          failuresRef.current = 0;
           if (result.status === "complete") {
             clearTimers();
             if (result.credential) onCreated(result.credential);
             onToast("GitHub Copilot connected.");
             onClose();
-          } else if (result.status === "expired" || result.status === "denied") {
+            return;
+          }
+          if (result.status === "expired" || result.status === "denied") {
             clearTimers();
             setPhase("error");
             setErrorMsg(
@@ -70,17 +92,25 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
                 ? "The device code expired before authorization completed."
                 : "Authorization was denied."
             );
+            return;
           }
-          // 'pending' — keep polling.
+          scheduleNext(); // 'pending' → exactly one more poll after the interval
         } catch {
-          clearTimers();
-          setPhase("error");
-          setErrorMsg("Failed to check authorization status.");
+          if (genRef.current !== gen) return;
+          failuresRef.current += 1;
+          if (failuresRef.current >= 3) {
+            clearTimers();
+            setPhase("error");
+            setErrorMsg("Failed to check authorization status.");
+            return;
+          }
+          scheduleNext(); // transient blip — keep trying
         }
       };
 
-      pollTimerRef.current = setInterval(doPoll, intervalMs);
+      scheduleNext();
       expiryTimerRef.current = setTimeout(() => {
+        if (genRef.current !== gen) return;
         clearTimers();
         setPhase((p) => {
           if (p === "pending") {
@@ -91,6 +121,7 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
         });
       }, (res.expires_in || 900) * 1000);
     } catch {
+      if (genRef.current !== gen) return;
       setPhase("error");
       setErrorMsg("Failed to start GitHub device authorization.");
     }
@@ -98,7 +129,12 @@ export function CopilotConnectModal({ onClose, onCreated, onToast }: CopilotConn
 
   useEffect(() => {
     start();
-    return () => clearTimers();
+    // Supersede any in-flight generation + clear timers on unmount so no
+    // orphaned poll loop keeps hitting the backend after the modal closes.
+    return () => {
+      genRef.current += 1;
+      clearTimers();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
