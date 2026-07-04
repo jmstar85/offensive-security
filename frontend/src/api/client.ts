@@ -108,7 +108,7 @@ export const createPentestDraft = (data: {
   // session default only); `mode` is "automation" | "assistant", fixed at
   // create. All optional/backward-compatible — omitting them yields the
   // server defaults (NULL / {} / "automation").
-  provider?: 'anthropic' | 'ollama' | 'openai' | null
+  provider?: 'anthropic' | 'ollama' | 'openai' | 'copilot' | null
   model_map?: Record<string, string>
   mode?: 'automation' | 'assistant'
   // Workflow-template preset selection (recon-only/web-pentest/full-scope,

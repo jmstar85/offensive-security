@@ -12,12 +12,13 @@ import {
   startOAuth,
 } from "../api/credentials";
 
-type Provider = "anthropic" | "openai" | "google";
+type Provider = "anthropic" | "openai" | "google" | "copilot";
 
 const PROVIDER_LABELS: Record<Provider, string> = {
   anthropic: "Claude (Anthropic)",
   openai: "OpenAI",
   google: "Gemini (Google)",
+  copilot: "GitHub Copilot",
 };
 
 function credStatus(row: CredentialRow): { label: string; variant: "success" | "destructive" | "secondary" } {

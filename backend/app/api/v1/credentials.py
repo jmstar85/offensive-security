@@ -74,6 +74,13 @@ _PROVIDER_INTROSPECT_URLS: dict[str, str | None] = {
     "google": "https://oauth2.googleapis.com/tokeninfo",
 }
 
+# GitHub Copilot uses the OAuth *device flow* (poll-based), not the
+# authorization-code+redirect PKCE flow above — so it has its own endpoints.
+# The client id is GitHub's public Copilot GitHub-App id (no client secret).
+_GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
+_GITHUB_DEVICE_TOKEN_URL = "https://github.com/login/oauth/access_token"
+_DEVICE_FLOW_PROVIDERS = {"copilot"}
+
 # ---------------------------------------------------------------------------
 # In-memory short-term store for pending OAuth state (TTL-checked on each call)
 # Keyed by state token → {user_id, code_verifier, expires_at, provider}
@@ -113,6 +120,23 @@ class CreateApiKeyRequest(BaseModel):
 class OAuthStartResponse(BaseModel):
     auth_url: str
     state: str
+
+
+class DeviceStartResponse(BaseModel):
+    user_code: str
+    verification_uri: str
+    interval: int
+    expires_in: int
+    state: str
+
+
+class DevicePollRequest(BaseModel):
+    state: str
+
+
+class DevicePollResponse(BaseModel):
+    status: str  # "pending" | "complete" | "expired" | "denied"
+    credential: CredentialResponse | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -408,3 +432,135 @@ async def oauth_callback(
     await db.flush()
 
     return _build_credential_response(cred)
+
+
+# ---------------------------------------------------------------------------
+# OAuth device flow (GitHub Copilot) — start returns a user_code the operator
+# enters at github.com/login/device; poll trades the device_code for a token.
+# ---------------------------------------------------------------------------
+
+@router.post("/auth/llm-providers/{provider}/device/start", response_model=DeviceStartResponse)
+async def device_flow_start(
+    provider: str,
+    current_user: User = Depends(get_current_user),
+):
+    if provider not in _DEVICE_FLOW_PROVIDERS:
+        raise HTTPException(
+            status_code=400, detail=f"Device flow not supported for provider: {provider}"
+        )
+    _purge_expired_states()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                _GITHUB_DEVICE_CODE_URL,
+                data={"client_id": settings.github_copilot_client_id},
+                headers={"Accept": "application/json"},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        raise HTTPException(status_code=502, detail="GitHub device-code request unreachable") from exc
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="GitHub device-code request failed")
+
+    data = resp.json()
+    device_code = data.get("device_code")
+    user_code = data.get("user_code")
+    if not device_code or not user_code:
+        raise HTTPException(status_code=502, detail="GitHub device-code response malformed")
+
+    verification_uri = data.get("verification_uri") or "https://github.com/login/device"
+    interval = int(data.get("interval", 5))
+    expires_in = int(data.get("expires_in", 900))
+
+    state = _make_state_token(str(current_user.id))
+    _oauth_pending[state] = {
+        "user_id": str(current_user.id),
+        "device_code": device_code,
+        "provider": provider,
+        "interval": interval,
+        "expires_at": datetime.now(timezone.utc) + timedelta(seconds=expires_in),
+    }
+
+    return DeviceStartResponse(
+        user_code=user_code,
+        verification_uri=verification_uri,
+        interval=interval,
+        expires_in=expires_in,
+        state=state,
+    )
+
+
+@router.post("/auth/llm-providers/{provider}/device/poll", response_model=DevicePollResponse)
+async def device_flow_poll(
+    provider: str,
+    body: DevicePollRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if provider not in _DEVICE_FLOW_PROVIDERS:
+        raise HTTPException(
+            status_code=400, detail=f"Device flow not supported for provider: {provider}"
+        )
+    _purge_expired_states()
+
+    pending = _oauth_pending.get(body.state)
+    if not pending or pending.get("provider") != provider:
+        raise HTTPException(status_code=400, detail="Invalid or expired device state")
+    # Bind the poll to the authenticated user (HMAC-signed state + stored user_id).
+    if pending["user_id"] != str(current_user.id) or not _verify_state_token(
+        body.state, str(current_user.id)
+    ):
+        raise HTTPException(status_code=403, detail="Device state does not belong to this user")
+    if pending["expires_at"] <= datetime.now(timezone.utc):
+        del _oauth_pending[body.state]
+        return DevicePollResponse(status="expired")
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                _GITHUB_DEVICE_TOKEN_URL,
+                data={
+                    "client_id": settings.github_copilot_client_id,
+                    "device_code": pending["device_code"],
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+                headers={"Accept": "application/json"},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        raise HTTPException(status_code=502, detail="GitHub token poll unreachable") from exc
+
+    data = resp.json() if resp.status_code == 200 else {}
+    access_token = data.get("access_token")
+    error = data.get("error")
+
+    if access_token:
+        del _oauth_pending[body.state]
+        encrypted = encrypt_credential(access_token)
+        cred = UserLLMCredential(
+            user_id=current_user.id,
+            provider=provider,
+            credential_type="oauth_token",
+            encrypted_value=encrypted,
+            label="GitHub Copilot",
+        )
+        db.add(cred)
+        await db.flush()
+        db.add(AuditLog(
+            actor_id=current_user.id,
+            action="credential.oauth_exchanged",
+            target_entity="user_llm_credentials",
+            target_id=str(cred.id),
+            details_json={"provider": provider, "flow": "device"},
+        ))
+        await db.flush()
+        return DevicePollResponse(status="complete", credential=_build_credential_response(cred))
+
+    if error == "access_denied":
+        del _oauth_pending[body.state]
+        return DevicePollResponse(status="denied")
+    if error == "expired_token":
+        del _oauth_pending[body.state]
+        return DevicePollResponse(status="expired")
+    # authorization_pending / slow_down / transient → keep polling.
+    return DevicePollResponse(status="pending")

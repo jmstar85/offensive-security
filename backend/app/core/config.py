@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     session_default_model_anthropic_id: str = "claude-opus-4-8"
     # Cheap OpenAI model for the per-provider interview/chat resolver (Blocking 1).
     openai_interview_model: str = "gpt-4o-mini"
+    # GitHub Copilot: the public device-flow client id every editor integration
+    # uses (no client secret needed), plus the default Copilot model. Copilot
+    # model ids are namespaced ``copilot/<model>`` so per-role routing can
+    # disambiguate them from bare openai/anthropic ids.
+    github_copilot_client_id: str = "Iv1.b507a08c87ecfe98"
+    github_copilot_default_model: str = "copilot/gpt-4o"
 
     # Interview loop
     workflow_max_interview_turns: int = 6

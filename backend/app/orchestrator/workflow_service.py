@@ -204,6 +204,8 @@ def resolve_interview_model(session: PentestSession) -> str:
         return settings.ollama_model
     if provider == "openai":
         return settings.openai_interview_model
+    if provider == "copilot":
+        return getattr(settings, "github_copilot_default_model", "copilot/gpt-4o")
     # anthropic (and any unrecognized provider) → cheap Anthropic default
     return settings.anthropic_default_model
 

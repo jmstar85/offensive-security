@@ -31,9 +31,14 @@ class LLMRouter:
             # so api_key defaults to "" and no credential lookup ever runs.
             from app.orchestrator.ollama_client import OllamaClient  # noqa: PLC0415
             return OllamaClient()
+        if p == "copilot":
+            # GitHub Copilot: api_key is the stored GitHub OAuth token; the
+            # provider exchanges it for a short-lived Copilot token internally.
+            from app.orchestrator.llm.copilot_provider import CopilotProvider  # noqa: PLC0415
+            return CopilotProvider(api_key=api_key)
         raise ValueError(
             f"Unknown LLM provider: {provider!r}. "
-            "Supported values: 'anthropic', 'openai', 'google', 'ollama'."
+            "Supported values: 'anthropic', 'openai', 'google', 'ollama', 'copilot'."
         )
 
     async def route(

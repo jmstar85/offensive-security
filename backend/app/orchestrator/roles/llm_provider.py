@@ -107,6 +107,10 @@ def provider_of(model_id: str) -> str:
     resolves to ``ollama``.
     """
     m = (model_id or "").lower()
+    # Copilot ids are namespaced ``copilot/<model>`` so they don't collide with
+    # bare openai/anthropic ids that Copilot also proxies (gpt-4o, claude-*).
+    if m.startswith("copilot/"):
+        return "copilot"
     if m.startswith(_ANTHROPIC_PREFIX):
         return "anthropic"
     if m.startswith(_OPENAI_PREFIXES):
@@ -126,6 +130,8 @@ def default_model_for(provider: str) -> str:
         return settings.ollama_model
     if p == "openai":
         return getattr(settings, "openai_default_model", "gpt-4o")
+    if p == "copilot":
+        return getattr(settings, "github_copilot_default_model", "copilot/gpt-4o")
     return settings.anthropic_default_model
 
 
