@@ -13,6 +13,7 @@ import { Loader2, Moon, Sun } from 'lucide-react'
 
 import { login, register } from '../api/client'
 import { useTheme } from '../lib/theme'
+import AuthHero from '../components/auth/AuthHero'
 
 const inputClass =
   'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
@@ -197,18 +198,20 @@ export default function Register() {
         </div>
       </div>
 
-      {/* ── Right column — brand panel with slow-spinning favicon mark ── */}
+      {/* ── Right column — animated brand panel ── */}
       <aside
         aria-hidden="true"
         className="hidden lg:flex relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background"
       >
-        <div className="m-auto flex items-center justify-center">
-          <img
-            src="/favicon.svg"
-            alt=""
-            className="w-40 h-40 animate-logo-spin drop-shadow-[0_0_24px_hsl(var(--primary)/0.4)]"
-          />
-        </div>
+        <AuthHero
+          headline="Machines that hack before attackers do."
+          subcopy="OSA thinks like an adversary and moves like one — full-spectrum offensive engagements run entirely by AI, at machine speed."
+          features={[
+            'Autonomous. Adversarial. Relentless.',
+            'No script. No supervision. No mercy.',
+            'Every engagement, machine-speed.',
+          ]}
+        />
       </aside>
     </div>
   )

@@ -45,14 +45,9 @@ export default {
       },
       keyframes: {
         'pulse-slow': { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.5' } },
-        // v4.0 gap-fill — login page slow rotating crosshair logo
-        // (PentAGI-style brand panel). Cubic-bezier matches PentAGI's
-        // smooth deceleration; 10s period feels meditative, not dizzying.
-        'logo-spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } },
       },
       animation: {
         'pulse-slow': 'pulse-slow 3s ease-in-out infinite',
-        'logo-spin': 'logo-spin 10s cubic-bezier(0.4, 0, 0.2, 1) infinite',
       },
     },
   },

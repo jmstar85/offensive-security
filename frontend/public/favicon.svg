@@ -1,22 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OSA Platform">
+  <!--
+    Concept A — "terminal prompt >_"
+    A bold command-line chevron + block cursor, reading the product as a
+    CLI-driven autonomous agent rather than a passive scanner. Two shapes
+    only (chevron stroke + cursor block) so it survives 16px favicon size.
+    Accent: red (matches current primary token, hsl(0 72% 51%)).
+  -->
   <defs>
-    <linearGradient id="shield" x1="12" x2="52" y1="6" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ef4444"/>
-      <stop offset="0.48" stop-color="#991b1b"/>
-      <stop offset="1" stop-color="#0f172a"/>
-    </linearGradient>
-    <radialGradient id="core" cx="32" cy="29" r="20" gradientUnits="userSpaceOnUse">
+    <linearGradient id="a-glyph" x1="16" y1="14" x2="53" y2="50" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fca5a5"/>
-      <stop offset="0.38" stop-color="#ef4444"/>
-      <stop offset="1" stop-color="#450a0a"/>
+      <stop offset="0.5" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#b91c1c"/>
+    </linearGradient>
+    <radialGradient id="a-glow" cx="32" cy="32" r="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ef4444" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ef4444" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#020617"/>
-  <path d="M32 5 53 13v15c0 14.6-8.4 25.6-21 31C19.4 53.6 11 42.6 11 28V13L32 5Z" fill="url(#shield)" stroke="#f87171" stroke-width="2"/>
-  <path d="M21 32c0-7.2 4.8-13 11-13s11 5.8 11 13" fill="none" stroke="#fecaca" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="32" cy="29" r="7" fill="url(#core)" stroke="#fee2e2" stroke-width="2"/>
-  <path d="M32 16v6M32 36v8M19 28h6M39 28h6M24 20l4 4M40 20l-4 4M24 40l4-5M40 40l-4-5" stroke="#fecaca" stroke-width="2.2" stroke-linecap="round"/>
-  <path d="M18 50 46 14" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" opacity=".85"/>
-  <circle cx="18" cy="50" r="2.5" fill="#38bdf8"/>
-  <circle cx="46" cy="14" r="2.5" fill="#38bdf8"/>
+
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#020617"/>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="#1e293b" stroke-width="1"/>
+  <circle cx="32" cy="32" r="27" fill="url(#a-glow)"/>
+
+  <!-- chevron ">" -->
+  <path d="M20 17 L36 32 L20 47" fill="none" stroke="url(#a-glyph)" stroke-width="9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- block cursor -->
+  <rect x="40" y="38" width="13" height="9" rx="2" fill="url(#a-glyph)"/>
 </svg>

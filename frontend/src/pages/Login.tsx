@@ -1,9 +1,7 @@
 /**
  * Login page — v4.0 PentAGI-style 2-pane shell.
  *
- * Left: 350px credential form. Right: branded gradient panel with the
- * slow-rotating OSA mark (favicon.svg) — same icon used in the sidebar
- * post-login so the brand stays consistent across the auth boundary.
+ * Left: 350px credential form. Right: animated AuthHero brand panel.
  * Top-right corner carries a light/dark theme toggle so the choice can be
  * made before any other navigation happens.
  */
@@ -13,6 +11,7 @@ import { Loader2, Moon, Sun } from 'lucide-react'
 
 import { login } from '../api/client'
 import { useTheme } from '../lib/theme'
+import AuthHero from '../components/auth/AuthHero'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -157,18 +156,20 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Right column — brand panel with slow-spinning favicon mark ── */}
+      {/* ── Right column — animated brand panel ── */}
       <aside
         aria-hidden="true"
         className="hidden lg:flex relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background"
       >
-        <div className="m-auto flex items-center justify-center">
-          <img
-            src="/favicon.svg"
-            alt=""
-            className="w-40 h-40 animate-logo-spin drop-shadow-[0_0_24px_hsl(var(--primary)/0.4)]"
-          />
-        </div>
+        <AuthHero
+          headline="Machines that hack before attackers do."
+          subcopy="OSA thinks like an adversary and moves like one — full-spectrum offensive engagements run entirely by AI, at machine speed."
+          features={[
+            'Autonomous. Adversarial. Relentless.',
+            'No script. No supervision. No mercy.',
+            'Every engagement, machine-speed.',
+          ]}
+        />
       </aside>
     </div>
   )
