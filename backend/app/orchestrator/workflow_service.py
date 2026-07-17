@@ -37,10 +37,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import async_session
 from app.models.project import Project, Target
 from app.models.session import PentestSession, WorkflowMessage
 from app.models.user import User
 from app.observability.metrics import ambiguity_bucket, metrics
+from app.orchestrator.llm.credential_resolver import CredentialNotFound
 from app.orchestrator.model_client import ModelClient, ModelUnreachable
 from app.orchestrator.model_selector import ModelSelector
 from app.safety.audit import AuditLogger
@@ -329,6 +331,46 @@ class WorkflowService:
 
     # ── chat ─────────────────────────────────────────────────────────────
 
+    async def _persist_interview_paused(
+        self,
+        *,
+        session_id: uuid.UUID,
+        resume_token: uuid.UUID,
+        audit_action: str,
+        actor_id: str,
+        audit_details: dict,
+    ) -> None:
+        """Persist the ``interview_paused`` marker on a SEPARATE short-lived
+        committed session so it survives the ``get_db`` rollback (plan R21).
+
+        The interview send endpoint runs under ``get_db`` (``core/database.py``),
+        which rolls back the request session on ANY raised exception. Writing
+        ``interview_paused`` on ``self._db`` and then raising the 503 would be
+        rolled back with everything else, so the paused banner could never
+        replay. The paused marker (+ its audit row) is therefore committed on
+        its OWN session here, before the caller raises the 503.
+
+        ``self._db`` is rolled back FIRST so it releases the row lock it holds on
+        the ``pentest_sessions`` row (from the in-turn user-message flush);
+        otherwise this side-session UPDATE would block on that uncommitted lock
+        within the same event-loop task and hang.
+        """
+        await self._db.rollback()
+        async with async_session() as side_db:
+            row = await side_db.get(PentestSession, session_id)
+            if row is not None:
+                row.status = "interview_paused"
+                row.interview_state = "interview_paused"
+                row.resume_token = resume_token
+            await AuditLogger(side_db).log(
+                action=audit_action,
+                actor_id=actor_id,
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details=audit_details,
+            )
+            await side_db.commit()
+
     async def send_message(
         self,
         *,
@@ -379,7 +421,48 @@ class WorkflowService:
             live_client = self._client or ModelClient()
             self._client = live_client  # cache for subsequent flag-OFF reuse
             loop = AmbiguityLoop(db=self._db, model_client=live_client)
-            turn_result = await loop.run_turn(session, user_content=user_message)
+            try:
+                turn_result = await loop.run_turn(session, user_content=user_message)
+            except CredentialNotFound as exc:
+                # Graceful credential failure (plan A4): pause + 503 instead of a
+                # raw 500, persisted across the get_db rollback (R21).
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="interview_credential_required",
+                    actor_id=str(user.id),
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "credential_required",
+                        "resume_token": str(resume_token),
+                        "message": (
+                            "The selected LLM provider has no stored credential. "
+                            "Connect the provider (for example GitHub Copilot) in "
+                            "settings, then resume the interview."
+                        ),
+                    },
+                )
+            except ModelUnreachable as exc:
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="claude_api_unreachable",
+                    actor_id=str(user.id),
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "claude_api_unreachable",
+                        "resume_token": str(resume_token),
+                        "message": str(exc),
+                    },
+                )
             # Fetch the assistant turn AmbiguityLoop just persisted.
             asst_q = await self._db.execute(
                 select(WorkflowMessage)
@@ -430,34 +513,60 @@ class WorkflowService:
             # (Blocking 1 / PM3).
             _provider = getattr(session, "llm_provider_pref", None) or settings.osa_llm_provider
             _user_id = getattr(session, "actor_id", None) or get_current_user_id()
-            _llm_client = await LLMRouter().route(
-                db=self._db,
-                provider=_provider,
-                user_id=_user_id,
-            )
             try:
+                # route() resolves the per-user credential (credential_resolver)
+                # BEFORE the send, so it lives INSIDE the try: a missing
+                # credential raises CredentialNotFound here (plan A4), and must
+                # map to the same graceful 503 pause as an unreachable model.
+                _llm_client = await LLMRouter().route(
+                    db=self._db,
+                    provider=_provider,
+                    user_id=_user_id,
+                )
                 response = await _llm_client.send(
                     model_id=self._resolved_anthropic_id(resolve_interview_model(session)),
                     messages=history,
                     system=CHAT_SYSTEM_PROMPT,
                 )
-            except ModelUnreachable as exc:
-                session.status = "interview_paused"
-                session.interview_state = "interview_paused"
-                session.resume_token = uuid.uuid4()
-                await self._db.flush()
-                await self._audit.log(
-                    action="claude_api_unreachable",
+            except CredentialNotFound as exc:
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="interview_credential_required",
                     actor_id=str(user.id),
-                    target_entity="pentest_session",
-                    target_id=str(session.id),
-                    details={"error": str(exc), "resume_token": str(session.resume_token)},
+                    audit_details={
+                        "error": str(exc),
+                        "provider": _provider,
+                        "resume_token": str(resume_token),
+                    },
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "credential_required",
+                        "resume_token": str(resume_token),
+                        "message": (
+                            f"The selected LLM provider ({_provider}) has no stored "
+                            "credential. Connect the provider (for example GitHub "
+                            "Copilot) in settings, then resume the interview."
+                        ),
+                    },
+                )
+            except ModelUnreachable as exc:
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="claude_api_unreachable",
+                    actor_id=str(user.id),
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
                 )
                 raise HTTPException(
                     status_code=503,
                     detail={
                         "error": "claude_api_unreachable",
-                        "resume_token": str(session.resume_token),
+                        "resume_token": str(resume_token),
                         "message": str(exc),
                     },
                 )
@@ -469,23 +578,41 @@ class WorkflowService:
                     messages=history,
                     system=CHAT_SYSTEM_PROMPT,
                 )
-            except ModelUnreachable as exc:
-                session.status = "interview_paused"
-                session.interview_state = "interview_paused"
-                session.resume_token = uuid.uuid4()
-                await self._db.flush()
-                await self._audit.log(
-                    action="claude_api_unreachable",
+            except CredentialNotFound as exc:
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="interview_credential_required",
                     actor_id=str(user.id),
-                    target_entity="pentest_session",
-                    target_id=str(session.id),
-                    details={"error": str(exc), "resume_token": str(session.resume_token)},
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "credential_required",
+                        "resume_token": str(resume_token),
+                        "message": (
+                            "The selected LLM provider has no stored credential. "
+                            "Connect the provider (for example GitHub Copilot) in "
+                            "settings, then resume the interview."
+                        ),
+                    },
+                )
+            except ModelUnreachable as exc:
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="claude_api_unreachable",
+                    actor_id=str(user.id),
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
                 )
                 raise HTTPException(
                     status_code=503,
                     detail={
                         "error": "claude_api_unreachable",
-                        "resume_token": str(session.resume_token),
+                        "resume_token": str(resume_token),
                         "message": str(exc),
                     },
                 )

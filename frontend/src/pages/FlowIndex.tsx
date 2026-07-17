@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PanelsLeftRight, Plus, Loader2 } from 'lucide-react'
 
-import { listSessions } from '../api/client'
+import { listProjects, listSessions } from '../api/client'
 import { LegacyPageBanner } from '../components/banners/LegacyPageBanner'
 
 interface SessionRow {
@@ -21,6 +21,11 @@ interface SessionRow {
   status?: string
   created_at?: string
   project_id?: string
+}
+
+interface ProjectRow {
+  id: string
+  name?: string
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -35,12 +40,42 @@ export default function FlowIndex() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     listSessions()
       .then((r) => setSessions(r.data ?? []))
       .catch((e) => setError(String(e?.response?.data?.detail ?? e)))
+    listProjects()
+      .then((r) => setProjects(r.data ?? []))
+      .catch(() => setProjects([]))
   }, [])
+
+  // The new-session buttons must always land on a form with a non-null
+  // projectId (AC-1.1): one project → attach ?project=<id>; several → open a
+  // lightweight picker; none → route to the project-creation flow (/projects).
+  const startNewSession = async () => {
+    let list: ProjectRow[]
+    if (projects !== null) {
+      list = projects
+    } else {
+      try {
+        const r = await listProjects()
+        list = r.data ?? []
+      } catch {
+        list = []
+      }
+      setProjects(list)
+    }
+    if (list.length === 1) {
+      navigate(`/pentest-sessions/new?project=${list[0].id}`)
+    } else if (list.length === 0) {
+      navigate('/projects')
+    } else {
+      setPickerOpen(true)
+    }
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -62,7 +97,7 @@ export default function FlowIndex() {
         </div>
         <button
           type="button"
-          onClick={() => navigate('/pentest-sessions/new')}
+          onClick={startNewSession}
           className="inline-flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 rounded-md text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
@@ -91,7 +126,7 @@ export default function FlowIndex() {
           </p>
           <button
             type="button"
-            onClick={() => navigate('/pentest-sessions/new')}
+            onClick={startNewSession}
             className="mt-4 inline-flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 rounded-md text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
@@ -137,6 +172,45 @@ export default function FlowIndex() {
             </li>
           ))}
         </ul>
+      )}
+
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Choose a project</h2>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Pick the project this pentest session belongs to.
+            </p>
+            <ul className="space-y-2 max-h-72 overflow-y-auto">
+              {(projects ?? []).map((p) => (
+                <li key={p.id}>
+                  <Link
+                    to={`/pentest-sessions/new?project=${p.id}`}
+                    onClick={() => setPickerOpen(false)}
+                    className="block border border-border rounded-lg px-3 py-2 bg-card hover:bg-muted/40 transition-colors text-sm text-foreground"
+                  >
+                    {p.name ?? p.id}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -120,6 +120,13 @@ async def test_flag_off_unchanged_path_does_not_create_msgchain(db, monkeypatch)
 
     monkeypatch.setattr(cfg.settings, "osa_flow_ui_enabled", False)
     monkeypatch.setattr(ws_mod.settings, "osa_flow_ui_enabled", False)
+    # Also pin the multi-provider flag OFF so this legacy-path test exercises the
+    # injected ModelClient (`_StubClient`) rather than routing through
+    # LLMRouter.route() → the per-user credential vault (which fails closed with
+    # CredentialNotFound → a persisted interview_paused pause). This matches the
+    # sibling `_legacy_chat_path` fixture in test_workflow_chat_flow.py.
+    monkeypatch.setattr(cfg.settings, "osa_multi_provider_llm", False)
+    monkeypatch.setattr(ws_mod.settings, "osa_multi_provider_llm", False)
 
     # Mock the legacy ModelClient call so we don't make a real Anthropic
     # request. WorkflowService instantiates ModelClient lazily when None.
