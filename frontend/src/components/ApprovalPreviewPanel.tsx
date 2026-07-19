@@ -17,6 +17,9 @@ interface Props {
   onApprove: (flags: ApprovalFlags) => void
   onReject: () => void
   onOpenForceApprove: () => void
+  onProceedToReview: () => void
+  proceeding?: boolean
+  ambiguityScore?: number
   canApprove: boolean
   state: string
   ambiguityOverrideReason?: string | null
@@ -30,6 +33,9 @@ export default function ApprovalPreviewPanel({
   onApprove,
   onReject,
   onOpenForceApprove,
+  onProceedToReview,
+  proceeding,
+  ambiguityScore,
   canApprove,
   state,
   ambiguityOverrideReason,
@@ -199,16 +205,31 @@ export default function ApprovalPreviewPanel({
       ) : (
         <>
           <p className="text-xs text-gray-500">
-            Session must reach <code className="bg-gray-800 px-1 rounded">ready_for_review</code>{' '}
-            before approval. Use the interview, or force-ready with a written reason.
+            The AI hasn't marked this session{' '}
+            <code className="bg-gray-800 px-1 rounded">ready_for_review</code> yet
+            {typeof ambiguityScore === 'number'
+              ? ` (ambiguity ${ambiguityScore.toFixed(2)})`
+              : ''}
+            . That score is advisory — the whitelist scope check is the safety
+            gate — so you can review and approve the plan now.
           </p>
-          <button
-            type="button"
-            onClick={onOpenForceApprove}
-            className="text-xs text-red-400 hover:text-red-300 underline"
-          >
-            Force ready for review →
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={proceeding}
+              onClick={onProceedToReview}
+              className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white px-3 py-1.5 rounded text-sm font-medium"
+            >
+              {proceeding ? 'Proceeding…' : 'Proceed to plan review'}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenForceApprove}
+              className="text-xs text-gray-400 hover:text-gray-200 underline"
+            >
+              Add a reason…
+            </button>
+          </div>
         </>
       )}
     </div>
