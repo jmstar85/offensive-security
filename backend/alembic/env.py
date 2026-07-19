@@ -24,6 +24,7 @@ from app.models import User, Team, Project, Target  # noqa: F401
 from app.models import PentestSession, AgentExecution, AttackScenario  # noqa: F401
 from app.models import Report, AuditLog, AgentRegistry  # noqa: F401
 from app.models import MsgChain, MemoryEntry  # noqa: F401  # v4.0 P1 additions
+from app.models import TerminalLine  # noqa: F401  # migration 013 flow-replay
 
 target_metadata = Base.metadata
 

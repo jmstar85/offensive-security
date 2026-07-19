@@ -19,6 +19,7 @@ from app.core.events import event_bus
 from app.models.session import AgentExecution
 from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
 from app.orchestrator.safety_exec import execute_tool_through_safety_chain
+from app.orchestrator.terminal_sink import TerminalLineSink
 from app.safety.audit import AuditLogger
 from app.safety.egress_monitor import EgressMonitor
 
@@ -51,10 +52,16 @@ class PlanExecutor:
                 status="running",
                 config_json=config,
                 started_at=datetime.now(timezone.utc),
+                step_order=step.get("order"),
             )
             self._db.add(execution)
             await self._db.flush()
             exec_id = execution.id
+
+            # migration 013: per-step buffer that persists streamed stdout to
+            # terminal_lines so the /flow Terminal panel REPLAYS on reload. A
+            # fresh sink per step keeps seq DB-derived + monotonic across steps.
+            terminal_sink = TerminalLineSink(self._db, session_id)
 
             # v4.0 P4 gap-fill 3/3 — Tasks tab receives step-lifecycle events.
             await event_bus.publish(str(session_id), {
@@ -81,18 +88,40 @@ class PlanExecutor:
                         .values(container_id=container_id)
                     )
 
-            async def _publish_event(event, _exec_id: uuid.UUID = exec_id) -> None:
+            async def _publish_event(
+                event,
+                _exec_id: uuid.UUID = exec_id,
+                _sink: TerminalLineSink = terminal_sink,
+            ) -> None:
                 # v4.0 P4 gap-fill 3/3 — route per-event-type to the right panel
                 # topic. Logs go to the Terminal tab; status / finding / error go to
                 # the Agents tab. Legacy subscribers (no `topics` filter) still
                 # receive all events.
                 event_topic = "terminal" if event.event_type == "log" else "agents"
-                await event_bus.publish(str(session_id), {
+                payload = {
                     "type": event.event_type,
                     "agent": event.agent_type,
                     "execution_id": str(_exec_id),
                     "data": event.data,
-                }, topic=event_topic)
+                }
+                # migration 013: persist stdout so the Terminal panel REPLAYS on
+                # reload; carry the assigned per-session `seq` at the top level so
+                # the frontend de-dupes the history/live boundary.
+                if event.event_type == "log":
+                    seq = await _sink.add(
+                        execution_id=_exec_id,
+                        agent_type=event.agent_type,
+                        line=event.data.get("line", ""),
+                    )
+                    if seq is not None:
+                        payload["seq"] = seq
+                elif event.event_type == "status" and event.data.get("status") in (
+                    "completed",
+                    "failed",
+                ):
+                    # Terminal status for this step — flush the buffered remainder.
+                    await _sink.flush()
+                await event_bus.publish(str(session_id), payload, topic=event_topic)
 
             # Run the tool through the shared runtime safety envelope (the single
             # sanctioned adapter.execute site + egress/kill-reg/shim-audit brakes).
@@ -106,6 +135,9 @@ class PlanExecutor:
                 on_event=_publish_event,
                 on_container_id=_register_container,
             )
+            # Flush any buffered stdout tail (the killed / error paths never emit a
+            # terminal status event). Defensive — never raises.
+            await terminal_sink.flush()
 
             if result.killed:
                 return all_findings  # session killed by egress monitor

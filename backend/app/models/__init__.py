@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.user import User, Team
 from app.models.project import Project, Target
-from app.models.session import PentestSession, AgentExecution, AttackScenario
+from app.models.session import PentestSession, AgentExecution, AttackScenario, TerminalLine
 from app.models.report import Report
 from app.models.audit import AuditLog
 from app.models.agent import AgentRegistry
@@ -19,6 +19,7 @@ __all__ = [
     "PentestSession",
     "AgentExecution",
     "AttackScenario",
+    "TerminalLine",
     "Report",
     "AuditLog",
     "AgentRegistry",

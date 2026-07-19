@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -175,8 +175,47 @@ class AgentExecution(Base, UUIDMixin, TimestampMixin):
     output_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # --- Flow-replay schema (migration 013) ----------------------------------
+    # Plan step order, so the Tasks panel can overlay per-step status by order
+    # when the /flow page reloads (the live stream carries it in the event).
+    step_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     session: Mapped[PentestSession] = relationship(back_populates="executions")
+
+
+class TerminalLine(Base, UUIDMixin):
+    """One streamed adapter stdout line, persisted so the /flow Terminal panel
+    REPLAYS on reload (migration 013). The panel already renders LIVE off the WS
+    ``terminal`` topic; these rows are the reload/replay source.
+
+    ``seq`` is a per-SESSION monotonic ordinal assigned by ``TerminalLineSink``
+    (seeded from ``max(seq)`` in the DB). The SAME ``seq`` is published at the top
+    level of the live ``log`` event, so the frontend de-dupes the history/live
+    boundary on it. ``execution_id`` is nullable + ``ON DELETE SET NULL`` so a
+    line survives its execution row being pruned.
+    """
+
+    __tablename__ = "terminal_lines"
+    __table_args__ = (
+        Index("ix_terminal_lines_session_seq", "session_id", "seq"),
+    )
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("pentest_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    execution_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_executions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    agent_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    line: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class AttackScenario(Base, UUIDMixin, TimestampMixin):

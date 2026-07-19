@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.project import Project
-from app.models.session import AgentExecution, PentestSession
-from app.models.user import User
+from app.models.session import AgentExecution, PentestSession, TerminalLine
+from app.models.user import User, UserRole
 from app.orchestrator.workflow_plan import WorkflowPlanError, normalize_workflow_plan
 
 router = APIRouter()
@@ -36,8 +36,45 @@ class ExecutionResponse(BaseModel):
     id: uuid.UUID
     agent_type: str
     status: str
+    step_order: int | None
     started_at: datetime | None
     ended_at: datetime | None
+
+
+class TerminalLineResponse(BaseModel):
+    seq: int
+    line: str
+    agent_type: str | None
+    execution_id: uuid.UUID | None
+    created_at: datetime | None
+
+
+async def _authorize_session_history(
+    db: AsyncSession, user: User, session_id: uuid.UUID
+) -> None:
+    """Team-ownership gate for history-replay reads, mirroring the team-ownership
+    intent of ``ws._authorize_session_access`` so the reload authz matches the
+    live WS: admins may read any session; otherwise the session must belong to the
+    caller's team.
+
+    NOTE: ws.py checks ``project.team_id``, but ``Project`` has no ``team_id``
+    column (that reference is a latent bug); the actual team linkage lives on
+    ``PentestSession.team_id`` (set to the creating user's team in
+    ``WorkflowService.create_draft``). We gate on that column, which is the
+    working realization of the same "same-team" ownership rule. Runs on the
+    request-scoped ``db`` (the WS variant opens its own AsyncSession only because
+    the socket handler lacks a request scope). Raises 404 (unknown session) or
+    403 (wrong team).
+    """
+    if user.role == UserRole.ADMIN:
+        return
+    sess = (
+        await db.execute(select(PentestSession).where(PentestSession.id == session_id))
+    ).scalar_one_or_none()
+    if sess is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if sess.team_id != user.team_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @router.post("/", response_model=SessionResponse, status_code=201)
@@ -190,7 +227,40 @@ async def get_executions(
     return [
         ExecutionResponse(
             id=e.id, agent_type=e.agent_type, status=e.status,
+            step_order=e.step_order,
             started_at=e.started_at, ended_at=e.ended_at,
         )
         for e in result.scalars().all()
+    ]
+
+
+@router.get("/{session_id}/terminal", response_model=list[TerminalLineResponse])
+async def get_terminal(
+    session_id: uuid.UUID,
+    after_seq: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replay persisted terminal stdout for the /flow Terminal panel on reload.
+
+    Returns lines with ``seq > after_seq`` ordered by ``seq`` (the same monotonic
+    ordinal the live WS ``terminal`` event carries), so the client can fetch the
+    history once on mount and de-dupe against live events on ``seq``. Authz mirrors
+    the live WS (team-ownership) so history and live streams gate identically.
+    """
+    await _authorize_session_history(db, current_user, session_id)
+    result = await db.execute(
+        select(TerminalLine)
+        .where(
+            TerminalLine.session_id == session_id,
+            TerminalLine.seq > after_seq,
+        )
+        .order_by(TerminalLine.seq)
+    )
+    return [
+        TerminalLineResponse(
+            seq=t.seq, line=t.line, agent_type=t.agent_type,
+            execution_id=t.execution_id, created_at=t.created_at,
+        )
+        for t in result.scalars().all()
     ]

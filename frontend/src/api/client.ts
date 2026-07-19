@@ -53,6 +53,16 @@ export const listSessions = (project_id?: string) =>
 export const getSession = (id: string) => api.get(`/sessions/${id}`)
 export const killSession = (id: string) => api.post(`/sessions/${id}/kill`)
 
+// Replay sources for /flow panels (Terminal + Tasks). Additive — the panels
+// already render live over WS; these let a reloaded panel rebuild prior state.
+// Terminal history returns ordered rows { seq, line, agent_type, execution_id,
+// created_at } with seq ascending and only seq > after_seq.
+export const getTerminalHistory = (id: string, afterSeq = 0) =>
+  api.get(`/sessions/${id}/terminal?after_seq=${afterSeq}`)
+// Executions returns { id, agent_type, status, step_order, started_at,
+// ended_at } used to overlay completed/failed status onto seeded Tasks rows.
+export const getExecutions = (id: string) => api.get(`/sessions/${id}/executions`)
+
 // Workflows
 export const listWorkflows = (project_id: string) =>
   api.get(`/projects/${project_id}/workflows`)

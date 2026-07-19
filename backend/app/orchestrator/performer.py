@@ -545,6 +545,7 @@ class Performer:
         from app.models.session import AgentExecution
         from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
         from app.orchestrator.safety_exec import execute_tool_through_safety_chain
+        from app.orchestrator.terminal_sink import TerminalLineSink
         from app.safety.audit import AuditLogger
 
         db = self.state.db
@@ -567,10 +568,16 @@ class Performer:
             status="running",
             config_json=config,
             started_at=datetime.now(timezone.utc),
+            step_order=step.get("order"),
         )
         db.add(execution)
         await db.flush()
         exec_id = execution.id
+
+        # migration 013: per-step buffer that persists streamed stdout to
+        # terminal_lines so the /flow Terminal panel REPLAYS on reload. A fresh
+        # sink per step keeps seq DB-derived + monotonic across steps/closures.
+        terminal_sink = TerminalLineSink(db, session_id)
 
         await event_bus.publish(str(session_id), {
             "type": "agent_started",
@@ -590,12 +597,29 @@ class Performer:
 
         async def _publish_event(event) -> None:
             topic = "terminal" if event.event_type == "log" else "agents"
-            await event_bus.publish(str(session_id), {
+            payload = {
                 "type": event.event_type,
                 "agent": event.agent_type,
                 "execution_id": str(exec_id),
                 "data": event.data,
-            }, topic=topic)
+            }
+            # migration 013: persist stdout so the Terminal panel REPLAYS on
+            # reload; carry the assigned per-session `seq` at the top level so the
+            # frontend de-dupes the history/live boundary.
+            if event.event_type == "log":
+                seq = await terminal_sink.add(
+                    execution_id=exec_id,
+                    agent_type=event.agent_type,
+                    line=event.data.get("line", ""),
+                )
+                if seq is not None:
+                    payload["seq"] = seq
+            elif event.event_type == "status" and event.data.get("status") in (
+                "completed",
+                "failed",
+            ):
+                await terminal_sink.flush()
+            await event_bus.publish(str(session_id), payload, topic=topic)
 
         result = await execute_tool_through_safety_chain(
             step,
@@ -607,6 +631,9 @@ class Performer:
             on_event=_publish_event,
             on_container_id=_register_container,
         )
+        # Flush any buffered stdout tail (the killed / error paths never emit a
+        # terminal status event). Defensive — never raises.
+        await terminal_sink.flush()
 
         if result.killed:
             return {"executed": True, "killed": True,

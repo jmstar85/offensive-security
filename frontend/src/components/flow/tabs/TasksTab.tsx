@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTopicWebSocket, WsEvent } from '@/hooks/useTopicWebSocket'
-import { getPentestSession } from '@/api/client'
+import { getPentestSession, getExecutions } from '@/api/client'
 
 interface TaskRow {
   order: number
@@ -20,6 +20,17 @@ interface TaskRow {
   description: string
   tier: string
   status?: string
+}
+
+// Execution row shape (GET /sessions/:id/executions). `step_order` maps an
+// execution back to the seeded plan step (TaskRow.order).
+interface ExecutionRow {
+  id: string
+  agent_type: string
+  status: string
+  step_order: number | null
+  started_at: string
+  ended_at: string | null
 }
 
 interface TaskEvent extends WsEvent {
@@ -58,6 +69,26 @@ export function TasksTab({ sessionId }: { sessionId: string }) {
         if (cancelled) return
         const steps = (r.data?.draft_plan_json?.steps ?? []) as TaskRow[]
         setTasks(steps)
+        // Overlay persisted execution status onto the seeded rows so a
+        // reloaded panel shows completed/failed states, not just the plan.
+        // Match each execution to its step by step_order === row.order.
+        getExecutions(sessionId)
+          .then((er) => {
+            if (cancelled) return
+            const execs = (er.data ?? []) as ExecutionRow[]
+            setTasks((prev) => {
+              const next = [...prev]
+              for (const ex of execs) {
+                if (typeof ex.step_order !== 'number') continue
+                const idx = next.findIndex((t) => t.order === ex.step_order)
+                if (idx >= 0) next[idx] = { ...next[idx], status: ex.status }
+              }
+              return next
+            })
+          })
+          .catch(() => {
+            // Execution overlay unavailable — keep the seeded rows as-is.
+          })
       })
       .catch((e) => !cancelled && setError(String(e)))
     return () => {
