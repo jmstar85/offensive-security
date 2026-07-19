@@ -843,8 +843,28 @@ class WorkflowService:
             session.approval_flags = {
                 k: bool(v) for k, v in approval_flags.items()
             }
-        # Promote the draft to the canonical plan; execute step is handled by P4 executor.
-        session.plan_json = session.draft_plan_json
+        # Promote the draft to the canonical plan ONLY when it is already an
+        # executable workflow (template-seeded: steps carry `id` + executable
+        # agents). A chat-shaped interview draft ({order,agent,action,tier}, no
+        # `id`, tool-slug agents) is display metadata, not a runnable plan:
+        # promoting it flips the service.py lane gate to "saved_workflow", whose
+        # normalize_workflow_plan then rejects the chat steps and fails the run.
+        # Leaving plan_json unchanged keeps a template session's pre-seeded
+        # plan_json (deterministic lane) and keeps a fresh-plan (interview)
+        # session's plan_json None → the autonomous lane runs (as the driver does).
+        from app.orchestrator.workflow_plan import (  # noqa: PLC0415
+            WorkflowPlanError,
+            normalize_workflow_plan,
+        )
+
+        draft = session.draft_plan_json or {}
+        if draft:
+            try:
+                normalize_workflow_plan(draft)
+            except WorkflowPlanError:
+                pass  # chat-shaped interview draft — do NOT promote
+            else:
+                session.plan_json = draft
         await self._db.flush()
 
         # P5: time-to-ready metric

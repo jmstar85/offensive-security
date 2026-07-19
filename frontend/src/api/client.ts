@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { ApprovalFlags } from '../components/ApprovalPreviewPanel'
 
 const api = axios.create({ baseURL: '/api/v1', timeout: 60000 })
 
@@ -167,8 +168,14 @@ export const forceReadyForReview = (id: string, override_reason: string) =>
 export const getApprovalPreview = (id: string) =>
   api.get(`/pentest-sessions/${id}/approval-preview`)
 
-export const approvePentestSession = (id: string) =>
-  api.post(`/pentest-sessions/${id}/approve`)
+export const approvePentestSession = (
+  id: string,
+  approval_flags?: ApprovalFlags,
+) =>
+  api.post(
+    `/pentest-sessions/${id}/approve`,
+    approval_flags ? { approval_flags } : undefined,
+  )
 
 export const rejectPentestSession = (id: string) =>
   api.post(`/pentest-sessions/${id}/reject`)

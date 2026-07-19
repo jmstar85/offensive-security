@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-interface ApprovalFlags {
+export interface ApprovalFlags {
   approved_active_recon?: boolean
   approved_active_exploit?: boolean
   approved_mid_active?: boolean

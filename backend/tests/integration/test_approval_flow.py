@@ -111,7 +111,30 @@ async def test_approve_succeeds_when_all_in_scope(db):
     assert updated.status == "approved"
     assert updated.approved_at is not None
     assert updated.approved_by == user.id
-    # plan_json promoted from draft_plan_json
+    # A chat-shaped interview draft (order/agent/action/tier, no `id`, tool-slug
+    # agents) is NOT promoted to plan_json — promoting it would route the run to
+    # the saved_workflow lane and immediately fail normalize_workflow_plan. It
+    # stays None so the lane gate picks fresh_plan → the autonomous engine (Gap A).
+    assert updated.plan_json is None
+
+
+@pytest.mark.asyncio
+async def test_approve_promotes_executable_workflow_draft(db):
+    # An already-executable workflow draft (steps carry `id` + an executable
+    # agent) IS promoted to plan_json so the deterministic saved_workflow lane
+    # can replay it verbatim.
+    s = await _seed(db, draft={
+        "target_summary": "acme staging",
+        "risk_level": "low",
+        "steps": [
+            {"id": "s1", "order": 1, "agent": "nmap", "action": "port_scan",
+             "tier": "active_recon", "config": {"target": "acme.com"}},
+        ],
+    })
+    user = _user()
+    svc = WorkflowService(db)
+    updated = await svc.approve(session_id=s.id, user=user)
+    assert updated.status == "approved"
     assert updated.plan_json == s.draft_plan_json
 
 
