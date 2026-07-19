@@ -206,6 +206,12 @@ class Performer:
                     )
                     break
 
+                # Increment C: create the running MsgChain row BEFORE the role
+                # runs so the Agents panel lights up live (committed on the shared
+                # session; the GET replays on mount + refetches on the agents-topic
+                # event). Persistence is defensive — it never breaks execution.
+                chain_id = await self._persist_msgchain_start(role_name)
+
                 result = await reflector_wrap(
                     role.run,
                     performer=self,
@@ -214,6 +220,10 @@ class Performer:
                 )
                 await self._publish_role_turn(role_name, result)
                 results.append(result)
+
+                # Increment C: finalize the MsgChain row with the role transcript
+                # + terminal status (runs even on error so the failed chain persists).
+                await self._persist_msgchain_end(chain_id, role_name, result)
 
                 if result.error:
                     logger.error(
@@ -273,6 +283,101 @@ class Performer:
             "iteration": self.state.iteration,
             "content": raw_text,
         }, topic="raw_conversation")
+
+    async def _persist_msgchain_start(self, role_name: str) -> UUID | None:
+        """Create a ``running`` MsgChain row for *role_name* and emit an agents event.
+
+        Increment C: the AgentsTab replays ``GET /pentest-sessions/{id}/msgchains``
+        on mount and refetches on any ``topic="agents"`` event. That GET runs on a
+        SEPARATE db session under READ COMMITTED, so the row MUST be committed here
+        to appear live — hence the explicit ``commit()`` on the Performer's shared
+        session (``expire_on_commit=False``, so ``chain.id`` survives the commit).
+
+        Returns the new chain id, or ``None`` if persistence failed. The whole body
+        is defensive: observability must never crash the role run, so any failure is
+        logged and swallowed and the loop proceeds without an Agents-panel row.
+        Mirrors the lazy-import pattern in ``_execute_step_through_helper`` to avoid
+        the service.py circular import.
+        """
+        from datetime import datetime, timezone
+
+        from app.core.events import event_bus
+        from app.models.msgchain import MsgChain
+
+        try:
+            db = self.state.db
+            chain = MsgChain(
+                pentest_session_id=self.state.session_id,
+                role_name=role_name,
+                messages_json=[],
+                status="running",
+                started_at=datetime.now(timezone.utc),
+            )
+            db.add(chain)
+            await db.flush()
+            chain_id = chain.id
+            await db.commit()
+            await event_bus.publish(str(self.state.session_id), {
+                "type": "msgchain_updated",
+                "role": role_name,
+                "status": "running",
+            }, topic="agents")
+            return chain_id
+        except Exception:  # noqa: BLE001 — persistence must never break the run.
+            logger.exception(
+                "MsgChain start-persist failed for role=%s session=%s (non-fatal)",
+                role_name,
+                self.state.session_id,
+            )
+            return None
+
+    async def _persist_msgchain_end(
+        self, chain_id: "UUID | None", role_name: str, result: RoleResult
+    ) -> None:
+        """Finalize the MsgChain row for *role_name* with the transcript + status.
+
+        Increment C companion to ``_persist_msgchain_start``. Writes the role's
+        ``messages`` into ``messages_json``, sets the terminal ``status``
+        (``failed`` when the role errored, else ``finished``), stamps ``ended_at``
+        and ``retries``, commits (same READ COMMITTED rationale as the start), then
+        emits the final agents event. No-op when the start-persist failed
+        (``chain_id is None``). Defensive: swallows + logs any failure.
+        """
+        if chain_id is None:
+            return
+
+        from datetime import datetime, timezone
+
+        from sqlalchemy import update
+
+        from app.core.events import event_bus
+        from app.models.msgchain import MsgChain
+
+        try:
+            db = self.state.db
+            status = "failed" if result.error else "finished"
+            await db.execute(
+                update(MsgChain)
+                .where(MsgChain.id == chain_id)
+                .values(
+                    messages_json=result.messages,
+                    status=status,
+                    ended_at=datetime.now(timezone.utc),
+                    retries=getattr(result, "retries", 0),
+                )
+            )
+            await db.commit()
+            await event_bus.publish(str(self.state.session_id), {
+                "type": "msgchain_updated",
+                "role": role_name,
+                "status": status,
+            }, topic="agents")
+        except Exception:  # noqa: BLE001 — persistence must never break the run.
+            logger.exception(
+                "MsgChain end-persist failed for role=%s session=%s (non-fatal)",
+                role_name,
+                self.state.session_id,
+            )
 
     def _consume_publish_token(self) -> bool:
         """Token-bucket: 50 capacity, refill 50/sec. Oldest-dropped on overflow."""
@@ -471,7 +576,7 @@ class Performer:
             "type": "agent_started",
             "agent": agent_type,
             "execution_id": str(exec_id),
-            "step": step.get("order", 0),
+            "step": {"order": step.get("order", 0), "status": "running"},
         }, topic="tasks")
 
         async def _register_container(container_id: str) -> None:
@@ -523,6 +628,7 @@ class Performer:
                 "execution_id": str(exec_id),
                 "error": result.safety_violation,
                 "reason": "shim_block",
+                "step": {"order": step.get("order", 0), "status": "failed"},
             }, topic="tasks")
             return {"executed": True, "safety_violation": result.safety_violation,
                     "execution_id": str(exec_id), "findings": []}
@@ -542,6 +648,7 @@ class Performer:
                 "agent": agent_type,
                 "execution_id": str(exec_id),
                 "error": result.error,
+                "step": {"order": step.get("order", 0), "status": "failed"},
             }, topic="tasks")
             return {"executed": True, "error": result.error,
                     "execution_id": str(exec_id), "findings": []}
@@ -610,6 +717,7 @@ class Performer:
                 "agent": agent_type,
                 "execution_id": str(exec_id),
                 "finding_count": len(step_findings),
+                "step": {"order": step.get("order", 0), "status": "completed"},
             }, topic="tasks")
 
         return {"executed": True, "findings": step_findings,

@@ -19,6 +19,7 @@ import { useTopicWebSocket, WsEvent } from '@/hooks/useTopicWebSocket'
 
 interface TerminalEvent extends WsEvent {
   line?: string
+  data?: { line?: string }
 }
 
 export function TerminalTab({ sessionId }: { sessionId: string }) {
@@ -75,7 +76,10 @@ export function TerminalTab({ sessionId }: { sessionId: string }) {
     if (!term) return
     for (let i = lastWritten.current; i < events.length; i++) {
       const e = events[i] as TerminalEvent
-      if (typeof e.line === 'string') term.writeln(e.line)
+      // Backend publishes the stdout line nested at `event.data.line`; the
+      // future persisted-history shape uses top-level `line`. Read from either.
+      const line = e.data?.line ?? e.line
+      if (typeof line === 'string') term.writeln(line)
       else term.writeln(JSON.stringify(e))
     }
     lastWritten.current = events.length

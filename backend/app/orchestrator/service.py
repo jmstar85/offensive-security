@@ -434,6 +434,14 @@ class OrchestratorService:
             tools_allowed=sorted(set(palette) | _RECON_BASE | {"ask", "done", "search_in_memory"})
         ))
         # Register the remaining topological roles; run_session skips unregistered.
+        # Import the role-seed module first so generator + reporter are present in
+        # ROLE_REGISTRY — their modules are otherwise imported by no production
+        # code, so without this the register_role_by_name calls below KeyError and
+        # get silently skipped, leaving a run with only a pentester chain and no
+        # report role. Seed populates the catalog (module-level register_role
+        # decorators); the loop still only registers generator + reporter on this
+        # performer instance.
+        from app.orchestrator.roles import seed  # noqa: F401
         for role_name in ("generator", "reporter"):
             try:
                 performer.register_role_by_name(role_name)

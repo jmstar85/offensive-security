@@ -61,7 +61,7 @@ class PlanExecutor:
                 "type": "agent_started",
                 "agent": agent_type,
                 "execution_id": str(exec_id),
-                "step": step.get("order", 0),
+                "step": {"order": step.get("order", 0), "status": "running"},
             }, topic="tasks")
 
             # Caller-owned sinks the runtime helper calls mid-stream. Loop vars are
@@ -129,6 +129,7 @@ class PlanExecutor:
                     "execution_id": str(exec_id),
                     "error": result.safety_violation,
                     "reason": "shim_block",
+                    "step": {"order": step.get("order", 0), "status": "failed"},
                 }, topic="tasks")
                 continue
 
@@ -147,6 +148,7 @@ class PlanExecutor:
                     "agent": agent_type,
                     "execution_id": str(exec_id),
                     "error": result.error,
+                    "step": {"order": step.get("order", 0), "status": "failed"},
                 }, topic="tasks")
                 continue
 
@@ -223,6 +225,7 @@ class PlanExecutor:
                 "agent": agent_type,
                 "execution_id": str(exec_id),
                 "finding_count": len(step_findings),
+                "step": {"order": step.get("order", 0), "status": "completed"},
             }, topic="tasks")
 
         return all_findings
