@@ -50,6 +50,32 @@ class TestNmapAdapter:
         cmd = self.adapter.build_command(target, config)
         assert "example.com" in cmd
 
+    def test_build_command_default_flags_are_sandbox_safe(self):
+        # The default scan must not need CAP_NET_RAW (dropped in the hardened
+        # agent container): TCP connect scan (-sT), skip host discovery (-Pn),
+        # NO OS detection (-O) or default scripts (-sC) which require raw sockets
+        # and otherwise fail with "failed to determine route".
+        cmd = self.adapter.build_command({"ip_ranges": ["10.0.0.1"], "domains": []}, {})
+        assert "-sT" in cmd
+        assert "-Pn" in cmd
+        assert "-O" not in cmd
+        assert "-sC" not in cmd
+
+    def test_build_command_drops_unresolvable_single_label_domain(self):
+        # A single-label placeholder ("jarvis") is dropped when a real IP target
+        # exists, so it does not flood the scan with "Failed to resolve".
+        cmd = self.adapter.build_command(
+            {"ip_ranges": ["20.196.207.37"], "domains": ["jarvis"]}, {}
+        )
+        assert "20.196.207.37" in cmd
+        assert "jarvis" not in cmd
+
+    def test_build_command_keeps_single_label_when_no_other_target(self):
+        # If the ONLY targets are single-label (no IP/FQDN), keep them rather than
+        # scanning nothing — nmap resolves or skips them as appropriate.
+        cmd = self.adapter.build_command({"ip_ranges": [], "domains": ["jarvis"]}, {})
+        assert "jarvis" in cmd
+
     def test_parse_output_empty_returns_empty_findings(self):
         result = self.adapter.parse_output("")
         assert isinstance(result, AgentResult)
