@@ -367,6 +367,39 @@ def list_tool_entries() -> list[ToolEntry]:
     return list(_REGISTRY.values())
 
 
+def palette_lines(kali_enabled: bool) -> list[str]:
+    """Return one compact palette line per VISIBLE tool entry.
+
+    Mirrors the ``_is_visible_tool`` filter in ``app/api/v1/agents.py``:
+    ``kali_*`` slugs are hidden when ``kali_enabled`` is False. Callers pass
+    ``settings.osa_kali_backend_enabled``. Registry-only (does NOT import the
+    API layer) so the Generator can ground its draft plan in the real tool
+    palette without pulling in the FastAPI stack.
+
+    Each line has the shape::
+
+        - {slug}  (tier: {tier})  actions: {a, b, c}  — {description}
+
+    where ``actions`` are the tool's real ``capabilities`` (the only valid
+    ``action`` values) — so the LLM cannot invent agent/action names.
+    """
+    lines: list[str] = []
+    for entry in _REGISTRY.values():
+        if entry.slug.startswith("kali_") and not kali_enabled:
+            continue
+        actions = ", ".join(entry.capabilities)
+        lines.append(
+            f"- {entry.slug}  (tier: {entry.tier})  actions: {actions}"
+            f"  — {entry.description}"
+        )
+    return lines
+
+
+def palette_text(kali_enabled: bool) -> str:
+    """Newline-joined :func:`palette_lines` — convenience for prompt injection."""
+    return "\n".join(palette_lines(kali_enabled))
+
+
 def palette_for_domain(domain_tags: frozenset[str]) -> list[ToolEntry]:
     """Return tools whose ``applicable_domain_tags`` intersect ``domain_tags``.
 

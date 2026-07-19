@@ -42,6 +42,20 @@ JSON envelope with these fields:
 - reasoning: string — your one-paragraph rationale for the proposed plan or for asking.
 - draft_plan: object with `steps: [{order, agent, action, description, config, tier}]`
   enumerating the SubTasks to run if the prompt is clear enough. Empty list if not.
+  You are given an AVAILABLE TOOLS list (prepended to the user message). Every
+  step MUST be grounded in that list — this is what makes the plan executable:
+    * `agent` MUST be EXACTLY one of the available tool slugs (copy it verbatim).
+    * `action` MUST be EXACTLY one of THAT tool's listed actions.
+    * `tier` MUST be THAT tool's listed tier.
+  NEVER invent agent or action names (e.g. "recon", "scanner", "reporter",
+  "banner_grab"): if a slug/action is not in the AVAILABLE TOOLS list, it does
+  not exist and the step cannot run.
+  Each step's `tier` is therefore EXACTLY one of these tier values:
+    "passive_no_target_contact", "passive_low_touch", "active_recon",
+    "mid_active", "active_exploit".
+  Do NOT invent other tier names (e.g. "info_gather", "report", "scanning"). When
+  unsure which tier applies, default to the most passive one that fits
+  ("passive_no_target_contact").
 
 Safety constraints:
 - Use only tools listed in your `tools_allowed`.
@@ -129,13 +143,34 @@ class Generator(Role):
             ]
             rag_prefix = "[Memory hits]\n" + "\n".join(lines) + "\n\n"
 
+        # Ground the draft plan in the REAL tool registry. AmbiguityLoop passes
+        # ``context["tools_palette"]`` (registry.palette_text of the visible
+        # tools). Prepending it — same mechanism as ``rag_prefix`` — makes the
+        # slug/action/tier vocabulary authoritative so the LLM cannot invent
+        # agent/action names (``recon``/``banner_grab``/…) that can't execute.
+        tools_palette = str(context.get("tools_palette") or "").strip()
+        palette_prefix = ""
+        if tools_palette:
+            palette_prefix = (
+                "[AVAILABLE TOOLS — you MUST choose agent/action/tier ONLY from "
+                "this list]\n" + tools_palette + "\n\n"
+            )
+
         messages = list(history)
         if user_content:
-            messages.append({"role": "user", "content": rag_prefix + user_content})
+            messages.append(
+                {"role": "user", "content": palette_prefix + rag_prefix + user_content}
+            )
 
-        # Resolve the send model id. Anthropic → an explicit context override else
-        # the vendor default id (unchanged); Ollama → the configured ollama model.
-        model_id = resolve_role_send_model(context.get("anthropic_model_id"))
+        # Resolve the send model id. An explicit ``send_model_id`` override (the
+        # interview lane threads the SESSION-provider-coherent model, e.g.
+        # ``copilot/gpt-4.1`` for a Copilot session) wins; else Anthropic → an
+        # explicit context override else the vendor default id (unchanged); Ollama
+        # → the configured ollama model. The autonomous lane never sets
+        # ``send_model_id`` → byte-identical to the prior behavior.
+        model_id = context.get("send_model_id") or resolve_role_send_model(
+            context.get("anthropic_model_id")
+        )
 
         response = await client.send(
             model_id=model_id,

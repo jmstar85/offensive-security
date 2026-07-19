@@ -207,6 +207,13 @@ def resolve_interview_model(session: PentestSession) -> str:
     if provider == "openai":
         return settings.openai_interview_model
     if provider == "copilot":
+        # The operator picks a specific Copilot model from the live catalog; honor
+        # THAT selection for the interview (user requirement) rather than forcing
+        # the cheap default. Only fall back to the default when the selection is
+        # unset or not a Copilot-namespaced id.
+        selected = getattr(session, "model_id", None)
+        if selected and str(selected).startswith("copilot/"):
+            return selected
         return getattr(settings, "github_copilot_default_model", "copilot/gpt-4o")
     # anthropic (and any unrecognized provider) → cheap Anthropic default
     return settings.anthropic_default_model
@@ -414,13 +421,41 @@ class WorkflowService:
         if settings.osa_flow_ui_enabled:
             from app.orchestrator.ambiguity_loop import AmbiguityLoop
 
-            # Inject the live ModelClient so Generator runs a real Anthropic
-            # call (gap-fill 2/3 from the v4.0 Phase 4 review). The same
-            # client instance used by the OFF path is reused so retry policy
-            # + auth + telemetry stay aligned.
-            live_client = self._client or ModelClient()
-            self._client = live_client  # cache for subsequent flag-OFF reuse
-            loop = AmbiguityLoop(db=self._db, model_client=live_client)
+            # Route the interview turn to the SESSION'S provider — no longer
+            # hardcoded to Anthropic (the bug: a Copilot/Ollama session got a
+            # ModelClient() with no ANTHROPIC_API_KEY → 500 "Could not resolve
+            # authentication method"). Three cases, in precedence order:
+            #   1. TEST-injected client (self._client set) → keep the prior
+            #      behavior so every existing flag-ON test that injects a stub
+            #      stays byte-identical.
+            #   2. multi-provider ON → build the per-session client_factory +
+            #      provider-coherent send model, exactly like the autonomous lane
+            #      (build_client_factory → resolve_session_role_client →
+            #      LLMRouter.route(session provider, user)). A missing credential
+            #      propagates from the factory as CredentialNotFound and is handled
+            #      by the except below.
+            #   3. legacy single-provider → the v4.0 hardcoded ModelClient path.
+            if self._client is not None:
+                loop = AmbiguityLoop(db=self._db, model_client=self._client)
+            elif settings.osa_multi_provider_llm:
+                from app.orchestrator.roles.llm_provider import (  # noqa: PLC0415
+                    build_client_factory,
+                )
+
+                factory = build_client_factory(
+                    db=self._db, session=session, actor_id=str(user.id)
+                )
+                # resolve_interview_model returns the cheap per-provider interview
+                # model (copilot→github_copilot_default_model, ollama→ollama_model,
+                # …), coherent with the provider the factory routes to.
+                send_model_id = self._resolved_anthropic_id(
+                    resolve_interview_model(session)
+                )
+                loop = AmbiguityLoop(
+                    db=self._db, client_factory=factory, send_model_id=send_model_id
+                )
+            else:
+                loop = AmbiguityLoop(db=self._db, model_client=ModelClient())
             try:
                 turn_result = await loop.run_turn(session, user_content=user_message)
             except CredentialNotFound as exc:
@@ -459,6 +494,31 @@ class WorkflowService:
                     status_code=503,
                     detail={
                         "error": "claude_api_unreachable",
+                        "resume_token": str(resume_token),
+                        "message": str(exc),
+                    },
+                )
+            except HTTPException:
+                # A graceful HTTPException raised inside the loop already carries
+                # its status + detail — never re-wrap it as a 503 below.
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # Final safety net: ANY other provider/config failure (e.g. an
+                # unexpected auth error from a misconfigured provider) becomes a
+                # graceful, PERSISTED 503 pause instead of a raw 500 — so the
+                # interview never 500s again. Mirrors the ModelUnreachable handler.
+                resume_token = uuid.uuid4()
+                await self._persist_interview_paused(
+                    session_id=session.id,
+                    resume_token=resume_token,
+                    audit_action="interview_error",
+                    actor_id=str(user.id),
+                    audit_details={"error": str(exc), "resume_token": str(resume_token)},
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "error": "interview_error",
                         "resume_token": str(resume_token),
                         "message": str(exc),
                     },

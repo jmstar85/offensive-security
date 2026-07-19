@@ -59,6 +59,27 @@ def test_null_provider_falls_back_to_global_switch_default():
         assert resolve_interview_model(session) == settings.anthropic_default_model
 
 
+# ── copilot honors the operator-selected model (user requirement) ───────────
+
+
+def test_copilot_session_interview_honors_selected_model():
+    # Unlike the cheap-default providers above, a Copilot session runs the
+    # interview on the SPECIFIC model the operator selected from the catalog.
+    session = _session("copilot", model_id="copilot/claude-sonnet-4.6")
+    assert resolve_interview_model(session) == "copilot/claude-sonnet-4.6"
+
+
+def test_copilot_session_interview_falls_back_when_unset_or_incoherent():
+    default = getattr(settings, "github_copilot_default_model", "copilot/gpt-4o")
+    # No selection → the per-provider default.
+    assert resolve_interview_model(_session("copilot", model_id=None)) == default
+    # A non-Copilot-namespaced id is not a valid Copilot model → default.
+    assert (
+        resolve_interview_model(_session("copilot", model_id="claude-opus-4-8"))
+        == default
+    )
+
+
 # ── _resolved_anthropic_id opus-4-8 branch ──────────────────────────────────
 
 

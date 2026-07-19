@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getAgentCatalog } from '../api/client'
 
 export interface DraftStep {
   order?: number
@@ -33,8 +34,63 @@ const TIER_BADGE: Record<string, string> = {
   active_exploit: 'bg-red-900/50 text-red-200 border-red-700/50',
 }
 
+// The canonical tier set the <select> offers. If the LLM emits a tier outside
+// this set, the select renders an extra "(unknown)" option so the real value is
+// shown instead of blanking (and React does not warn about an out-of-range value).
+const KNOWN_TIERS = Object.keys(TIER_BADGE)
+
+// A real, executable tool agent from GET /agents/catalog, reduced to the fields
+// the editor grounds against: its slug, the valid actions (capabilities), and
+// its canonical tier.
+interface CatalogTool {
+  slug: string
+  capabilities: string[]
+  tier: string
+}
+
 export default function DraftStepEditor({ draft, onChange, readOnly }: Props) {
   const steps = useMemo(() => draft.steps ?? [], [draft.steps])
+
+  // Fetch the tool-agent catalog once so agent/action/tier become dropdowns of
+  // tools that actually exist. On any fetch failure `tools` stays empty, which
+  // degrades every field back to the original free-text inputs (never breaks).
+  const [tools, setTools] = useState<CatalogTool[]>([])
+
+  useEffect(() => {
+    let alive = true
+    getAgentCatalog()
+      .then((res) => {
+        if (!alive) return
+        const toolAgents = (res.data?.tool_agents ?? []) as Array<{
+          agent_type: string
+          capabilities?: string[]
+          tier?: string
+        }>
+        setTools(
+          toolAgents.map((a) => ({
+            slug: a.agent_type,
+            capabilities: a.capabilities ?? [],
+            tier: a.tier ?? '',
+          }))
+        )
+      })
+      .catch(() => {
+        /* graceful fallback — free-text inputs remain usable */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const toolSlugs = useMemo(
+    () => tools.map((t) => t.slug).sort((a, b) => a.localeCompare(b)),
+    [tools]
+  )
+  const toolBySlug = useMemo(() => {
+    const m = new Map<string, CatalogTool>()
+    tools.forEach((t) => m.set(t.slug, t))
+    return m
+  }, [tools])
 
   const updateStep = (idx: number, patch: Partial<DraftStep>) => {
     if (readOnly) return
@@ -136,7 +192,9 @@ export default function DraftStepEditor({ draft, onChange, readOnly }: Props) {
             </p>
           )}
 
-          {steps.map((s, i) => (
+          {steps.map((s, i) => {
+            const selectedTool = s.agent ? toolBySlug.get(s.agent) : undefined
+            return (
             <div
               key={i}
               className="border border-gray-800 rounded-lg p-3 space-y-2"
@@ -182,21 +240,73 @@ export default function DraftStepEditor({ draft, onChange, readOnly }: Props) {
 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="text-gray-500">agent</label>
-                <input
-                  value={s.agent ?? ''}
-                  disabled={readOnly}
-                  onChange={(e) => updateStep(i, { agent: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
-                  placeholder="passive_recon"
-                />
+                {toolSlugs.length > 0 ? (
+                  <select
+                    value={s.agent ?? ''}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      const slug = e.target.value
+                      const tool = toolBySlug.get(slug)
+                      const patch: Partial<DraftStep> = { agent: slug }
+                      if (tool) {
+                        // Ground the tier to the tool's canonical tier, and drop
+                        // an action that the newly-selected tool can't perform.
+                        if (tool.tier) patch.tier = tool.tier
+                        if (s.action && !tool.capabilities.includes(s.action)) {
+                          patch.action = ''
+                        }
+                      }
+                      updateStep(i, patch)
+                    }}
+                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
+                  >
+                    <option value="">— select agent —</option>
+                    {toolSlugs.map((slug) => (
+                      <option key={slug} value={slug}>
+                        {slug}
+                      </option>
+                    ))}
+                    {s.agent && !toolBySlug.has(s.agent) && (
+                      <option value={s.agent}>{s.agent} (unknown)</option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    value={s.agent ?? ''}
+                    disabled={readOnly}
+                    onChange={(e) => updateStep(i, { agent: e.target.value })}
+                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
+                    placeholder="passive_recon"
+                  />
+                )}
                 <label className="text-gray-500">action</label>
-                <input
-                  value={s.action ?? ''}
-                  disabled={readOnly}
-                  onChange={(e) => updateStep(i, { action: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
-                  placeholder="passive_dns_recon"
-                />
+                {selectedTool ? (
+                  <select
+                    value={s.action ?? ''}
+                    disabled={readOnly}
+                    onChange={(e) => updateStep(i, { action: e.target.value })}
+                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
+                  >
+                    <option value="">— select action —</option>
+                    {selectedTool.capabilities.map((cap) => (
+                      <option key={cap} value={cap}>
+                        {cap}
+                      </option>
+                    ))}
+                    {s.action &&
+                      !selectedTool.capabilities.includes(s.action) && (
+                        <option value={s.action}>{s.action} (unknown)</option>
+                      )}
+                  </select>
+                ) : (
+                  <input
+                    value={s.action ?? ''}
+                    disabled={readOnly}
+                    onChange={(e) => updateStep(i, { action: e.target.value })}
+                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white"
+                    placeholder="passive_dns_recon"
+                  />
+                )}
                 <label className="text-gray-500">tier</label>
                 <select
                   value={s.tier ?? 'passive_low_touch'}
@@ -210,6 +320,9 @@ export default function DraftStepEditor({ draft, onChange, readOnly }: Props) {
                   <option value="passive_low_touch">passive_low_touch</option>
                   <option value="active_recon">active_recon</option>
                   <option value="active_exploit">active_exploit</option>
+                  {s.tier && !KNOWN_TIERS.includes(s.tier) && (
+                    <option value={s.tier}>{s.tier} (unknown)</option>
+                  )}
                 </select>
                 <label className="text-gray-500">description</label>
                 <input
@@ -233,7 +346,8 @@ export default function DraftStepEditor({ draft, onChange, readOnly }: Props) {
                 />
               </div>
             </div>
-          ))}
+            )
+          })}
         </section>
       </div>
     </div>

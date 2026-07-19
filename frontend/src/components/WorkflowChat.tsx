@@ -57,9 +57,8 @@ export default function WorkflowChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages.length])
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || busy) return
+  const send = async () => {
+    if (!input.trim() || busy || disabled) return
     setBusy(true)
     try {
       await onSend(input.trim())
@@ -67,6 +66,11 @@ export default function WorkflowChat({
     } finally {
       setBusy(false)
     }
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void send()
   }
 
   const turnBadge = turnCount !== undefined && maxTurns !== undefined
@@ -167,6 +171,13 @@ export default function WorkflowChat({
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter inserts a newline.
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              void send()
+            }
+          }}
           disabled={disabled || busy}
           placeholder={
             disabled

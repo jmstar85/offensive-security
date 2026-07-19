@@ -25,6 +25,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.registry import palette_text
 from app.core.config import settings
 from app.models.msgchain import MsgChain
 from app.models.session import PentestSession, WorkflowMessage
@@ -55,12 +56,26 @@ def _decide_next_state(ambiguity: float, turn_count: int) -> str:
 class AmbiguityLoop:
     """One turn of the Generator-driven clarification loop."""
 
-    def __init__(self, db: AsyncSession, model_client: Any = None) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        model_client: Any = None,
+        client_factory: Any = None,
+        send_model_id: str | None = None,
+    ) -> None:
         self._db = db
         # Optional injection — when provided, Generator runs live against
         # Anthropic. When None, Generator returns its deterministic envelope
         # (used by unit tests that exercise AmbiguityLoop in isolation).
         self._model_client = model_client
+        # Per-session provider routing (interview lane): when a ``client_factory``
+        # is supplied the Generator resolves its client via the session's provider
+        # (Copilot/Ollama/…) instead of the injected model_client, and
+        # ``send_model_id`` forces the provider-coherent model so the send is not
+        # coupled to the GLOBAL provider switch. Both stay None on the injected/
+        # test path → byte-identical.
+        self._client_factory = client_factory
+        self._send_model_id = send_model_id
 
     async def run_turn(
         self,
@@ -92,6 +107,11 @@ class AmbiguityLoop:
             {"role": m.role, "content": m.content} for m in prior.scalars().all()
         ]
 
+        # 2b. Build the REAL tool palette so the Generator grounds its draft
+        #     plan in registered slugs/actions/tiers (not invented names). Mirror
+        #     the catalog's kali_* visibility filter via osa_kali_backend_enabled.
+        tools_palette = palette_text(settings.osa_kali_backend_enabled)
+
         # 3. Generator.run() — live Anthropic call when `model_client` was
         #    injected at construction, otherwise the deterministic envelope.
         gen = Generator()
@@ -102,7 +122,10 @@ class AmbiguityLoop:
                 "memory_hits": memory_hits,
                 "history": history,
                 "model_client": self._model_client,
+                "send_model_id": self._send_model_id,
+                "tools_palette": tools_palette,
             },
+            client_factory=self._client_factory,
         )
 
         # 3. Parse the envelope from the smoke message. P4 hardens this with

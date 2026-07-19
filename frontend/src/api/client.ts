@@ -93,6 +93,11 @@ export const deactivateUser = (id: string) => api.delete(`/users/${id}`)
 export const listAuditLogs = (limit = 100) =>
   api.get('/audit-logs/', { params: { limit } })
 
+// Agent catalog — real executable tool agents (agent_type + capabilities +
+// tier). Used to ground the Draft plan editor so manual edits can only select
+// tools that actually exist. Returns { tool_agents: [...], domain_agents: [...] }.
+export const getAgentCatalog = () => api.get('/agents/catalog')
+
 // Domain agents (plan v3.2.1 §3 / P2)
 export const listDomainAgents = () => api.get('/domain-agents/')
 export const getDomainAgent = (slug: string) => api.get(`/domain-agents/${slug}`)
@@ -126,6 +131,12 @@ export const getPentestSession = (id: string) =>
 
 export const sendPentestMessage = (id: string, content: string) =>
   api.post(`/pentest-sessions/${id}/messages`, { content })
+
+// Interview history (auto-kickoff replay). Returns the ordered WorkflowMessage
+// rows so a reloaded /flow/:id or /pentest-sessions/:id replays the prompt +
+// prior turns instead of landing on an empty panel.
+export const getPentestMessages = (id: string) =>
+  api.get(`/pentest-sessions/${id}/messages`)
 
 // Assistant mode (newflow PR7/PR8) — interactive chat turn. 409 when
 // session.mode != "assistant" or a turn is already in progress (per-session
