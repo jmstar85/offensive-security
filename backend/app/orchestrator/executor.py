@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.events import event_bus
 from app.models.session import AgentExecution
 from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
@@ -44,6 +45,13 @@ class PlanExecutor:
         for step in steps:
             agent_type = step["agent"]
             config = step.get("config", {})
+            # Attach a Docker network so the tool container can reach the target.
+            # Without this the backend runs with network_disabled=True and the scan
+            # reaches nothing (host "up" via -Pn but 0 ports in ~0.1s, plus
+            # "Unable to determine any DNS servers"). The autonomous Performer already
+            # does this (performer.py); the saved_workflow / template lane (this
+            # PlanExecutor) needs the same default so its tools can reach the target.
+            config.setdefault("network", settings.osa_agent_container_network)
 
             # Create execution record
             execution = AgentExecution(
