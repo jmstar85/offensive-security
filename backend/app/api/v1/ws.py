@@ -22,7 +22,6 @@ from sqlalchemy import select
 from app.core.database import async_session
 from app.core.events import event_bus
 from app.core.security import decode_access_token
-from app.models.project import Project
 from app.models.session import PentestSession
 from app.models.user import User, UserRole
 
@@ -65,13 +64,13 @@ async def _authorize_session_access(
         ).scalar_one_or_none()
         if sess is None:
             return False, 4004
-        project = (
-            await db.execute(select(Project).where(Project.id == sess.project_id))
-        ).scalar_one_or_none()
-        if project is None:
-            return False, 4004
-        # Session ownership = same team as the project that owns it.
-        if project.team_id != user.team_id:
+        # Session ownership = same team. The team linkage lives on
+        # PentestSession.team_id (set to the creating user's team in
+        # WorkflowService.create_draft); Project has NO team_id column, so the
+        # prior `project.team_id` check raised AttributeError for every
+        # non-admin connect. This mirrors the terminal-history replay gate in
+        # sessions.py (same "same-team" ownership rule).
+        if sess.team_id != user.team_id:
             return False, 4003
     return True, 0
 

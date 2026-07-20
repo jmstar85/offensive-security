@@ -108,6 +108,14 @@ class OrchestratorService:
         from app.orchestrator.llm.base import ModelUnreachable
 
         lane = "saved_workflow" if session.plan_json else "fresh_plan"
+        # The XBOW autonomous lane (step 9) drives the Performer, which generates
+        # and executes its OWN plan from the operator objective. The legacy
+        # AttackPlanner pre-pass below is only a hint on that lane, so its failure
+        # must not kill an autonomous run (see the plan-generation try/except).
+        autonomous_lane = (
+            getattr(settings, "osa_xbow_autonomous_enabled", False)
+            and lane == "fresh_plan"
+        )
         coordinator_replay_enabled = getattr(settings, "osa_coordinator_replay_enabled", False)
         skip_coordinator_replay = bool((session.plan_json or {}).get("skip_coordinator_replay", False))
         replay_opt_in = (lane == "saved_workflow") and coordinator_replay_enabled and not skip_coordinator_replay
@@ -245,8 +253,24 @@ class OrchestratorService:
             try:
                 plan = await self._planner.create_plan(prompt, target)
             except Exception as exc:
-                await self._fail(session_id, f"Plan generation failed: {exc}")
-                return
+                # On the autonomous lane the Performer generates + executes its
+                # own plan from the objective, so a legacy-planner failure (e.g.
+                # no Anthropic credential on an Ollama/Copilot-only deployment)
+                # must NOT abort the run — fall back to an empty plan and let the
+                # Performer drive. On the non-autonomous PlanExecutor lane the
+                # plan IS load-bearing, so there we still fail loudly.
+                if autonomous_lane:
+                    await self._audit.log(
+                        action="plan_generation_skipped_autonomous",
+                        actor_id=str(actor_id),
+                        target_entity="pentest_session",
+                        target_id=str(session_id),
+                        details={"error": str(exc)},
+                    )
+                    plan = {"version": 1, "steps": []}
+                else:
+                    await self._fail(session_id, f"Plan generation failed: {exc}")
+                    return
 
             # 6. Persist plan
             await self._db.execute(
@@ -314,7 +338,7 @@ class OrchestratorService:
         # on the fresh-plan lane. Saved-workflow REPLAY always uses the deterministic
         # PlanExecutor (re-runs the exact saved steps) so byte-identical replay holds
         # even when the autonomous flag is ON (PR10 default-flip precondition).
-        if getattr(settings, "osa_xbow_autonomous_enabled", False) and lane == "fresh_plan":
+        if autonomous_lane:
             findings = await self._run_autonomous_lane(
                 session_id=session_id,
                 session=session,
