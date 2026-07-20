@@ -188,13 +188,25 @@ def min_required_fields_present(draft_plan: dict) -> bool:
     return True
 
 
+def interview_ambiguity_target() -> float:
+    """The ambiguity ceiling the interview must reach before ready_for_review.
+
+    Group B: when ``osa_interview_autoblock_enabled`` is on, the flow interview
+    uses the tighter autoblock target (the "until ≤ 20%" contract); otherwise the
+    legacy ``workflow_ambiguity_threshold`` (0.35) applies.
+    """
+    if getattr(settings, "osa_interview_autoblock_enabled", False):
+        return settings.osa_interview_autoblock_threshold
+    return settings.workflow_ambiguity_threshold
+
+
 def _next_state_after_turn(turn: AssistantTurn, new_turn_count: int) -> str:
     if not min_required_fields_present(turn.draft_plan):
         # sanity guard overrides any low-ambiguity claim from the model
         if new_turn_count >= settings.workflow_max_interview_turns:
             return "needs_human_review"
         return "interviewing"
-    if turn.ambiguity <= settings.workflow_ambiguity_threshold:
+    if turn.ambiguity <= interview_ambiguity_target():
         return "ready_for_review"
     if new_turn_count >= settings.workflow_max_interview_turns:
         return "needs_human_review"

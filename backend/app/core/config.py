@@ -95,6 +95,14 @@ class Settings(BaseSettings):
     # Interview loop
     workflow_max_interview_turns: int = 6
     workflow_ambiguity_threshold: float = 0.35
+    # Group B (osa flow interview autoblock): when enabled, the session-start
+    # interview must drive ambiguity down to the tighter target below before it
+    # may reach ready_for_review — the deep-interview "until ≤ 20%" contract.
+    # The operator can still one-click "Proceed to plan review" (ambiguity is
+    # advisory; the whitelist scope stays the hard gate), and the turn cap
+    # (workflow_max_interview_turns) remains the escape hatch to needs_human_review.
+    osa_interview_autoblock_enabled: bool = True
+    osa_interview_autoblock_threshold: float = 0.20
     workflow_force_approve_min_reason_chars: int = 32
     workflow_opus_requires_admin: bool = True
 

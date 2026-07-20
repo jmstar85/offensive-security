@@ -25,6 +25,10 @@ interface Props {
   messages: ChatMessage[]
   disabled?: boolean
   ambiguityScore?: number
+  /** Group B: the ambiguity ceiling the interview must reach before
+   * ready_for_review (0.20 when autoblock is on, else 0.35). Drives the header
+   * colour + the "target ≤ X.XX" hint. */
+  ambiguityTarget?: number
   turnCount?: number
   maxTurns?: number
   onSend: (text: string) => void | Promise<void>
@@ -41,6 +45,7 @@ export default function WorkflowChat({
   messages,
   disabled,
   ambiguityScore,
+  ambiguityTarget = 0.35,
   turnCount,
   maxTurns,
   onSend,
@@ -52,10 +57,28 @@ export default function WorkflowChat({
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages.length])
+
+  // Group B ask-cards: only the MOST RECENT assistant turn's blockers are still
+  // actionable (older ones are stale history). Clicking one seeds a targeted
+  // answer stub into the input so the operator resolves that specific ambiguity,
+  // driving the score toward the target.
+  const latestBlockers = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].blockers ?? []
+    }
+    return []
+  })()
+
+  const askAbout = (blocker: string) => {
+    const stub = `Re: "${blocker}" — `
+    setInput((prev) => (prev.includes(stub) ? prev : prev ? `${prev}\n${stub}` : stub))
+    textareaRef.current?.focus()
+  }
 
   const send = async () => {
     if (!input.trim() || busy || disabled) return
@@ -83,11 +106,16 @@ export default function WorkflowChat({
         <h2 className="text-sm font-semibold text-gray-200">{title}</h2>
         <div className="text-xs text-gray-500 flex gap-3">
           {ambiguityScore !== undefined && (
-            <span>
+            <span title={`Interview target ≤ ${ambiguityTarget.toFixed(2)}`}>
               ambiguity{' '}
-              <span className={ambiguityScore <= 0.35 ? 'text-green-400' : 'text-yellow-400'}>
+              <span
+                className={
+                  ambiguityScore <= ambiguityTarget ? 'text-green-400' : 'text-yellow-400'
+                }
+              >
                 {ambiguityScore.toFixed(2)}
               </span>
+              <span className="text-gray-600"> / ≤{ambiguityTarget.toFixed(2)}</span>
             </span>
           )}
           {turnBadge && <span>{turnBadge}</span>}
@@ -167,8 +195,34 @@ export default function WorkflowChat({
         ))}
       </div>
 
+      {/* Group B — clickable ask-cards for the latest turn's open questions.
+          Each resolves a specific ambiguity; clicking seeds a targeted answer. */}
+      {!disabled && latestBlockers.length > 0 && (
+        <div className="border-t border-gray-800 px-3 pt-3 space-y-2" data-testid="ask-cards">
+          <div className="text-xs uppercase tracking-wide text-amber-400">
+            Open questions — click to answer
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {latestBlockers.map((b, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => askAbout(b)}
+                data-testid={`ask-card-${i}`}
+                title={`Answer: ${b}`}
+                className="text-left text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-800/40 max-w-full"
+              >
+                <span className="text-amber-500 mr-1">?</span>
+                <span className="align-middle">{b}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form onSubmit={submit} className="border-t border-gray-800 p-3 flex gap-2">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
