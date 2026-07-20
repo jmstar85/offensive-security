@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import json
 
-from app.agents.base import AgentAdapter, AgentResult, RiskLevel
+from app.agents.base import (
+    AgentAdapter,
+    AgentResult,
+    RiskLevel,
+    filter_resolvable_targets,
+)
 
 # Severity mapping to numeric risk score (CVSS-ish)
 _SEVERITY_SCORE = {"critical": 9.0, "high": 7.0, "medium": 5.0, "low": 3.0, "info": 1.0}
@@ -18,8 +23,12 @@ class NucleiAdapter(AgentAdapter):
         return ["cve_scan", "web_vulnerability_scan", "misconfiguration_detection", "exposures"]
 
     def build_command(self, target: dict, config: dict) -> list[str]:
-        targets = target.get("domains", []) + target.get("ip_ranges", [])
-        target_str = ",".join(targets) if targets else "127.0.0.1"
+        # Drop bogus single-label domains (e.g. "jarvis") when a resolvable
+        # target co-exists, mirroring NmapAdapter — otherwise nuclei wastes the
+        # run resolving a placeholder that can never answer.
+        raw = (target.get("domains", []) or []) + (target.get("ip_ranges", []) or [])
+        targets = filter_resolvable_targets(raw)
+        target_str = ",".join(targets)
         severity = config.get("severity", "low,medium,high,critical")
         # JSON-lines output for easy parsing; exclude critical destructive templates
         # The image ENTRYPOINT is `nuclei`, so emit ARGS ONLY (no leading "nuclei").

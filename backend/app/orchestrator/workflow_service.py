@@ -79,6 +79,10 @@ You converse with a senior operator. Every turn you must respond with a single J
 
 Rules:
 - Only include steps that are authorized and within the operator's project whitelist.
+- Keep draft_plan a CONCISE skeleton: AT MOST 8 high-level steps with one-line
+  descriptions (a downstream planner expands it into the full run). Always populate
+  each step's `config` (target/host/ip_ranges/domains) so the scope preview can
+  validate it — trim only prose, never the config.
 - Prefer low-risk reconnaissance before high-risk steps.
 - Never include DoS, ransomware, or data-destruction steps.
 - If the operator's intent is unclear, set ambiguity ≥ 0.5 and explain in blockers.
@@ -563,6 +567,7 @@ class WorkflowService:
                     "ambiguity": turn_result.ambiguity,
                     "blockers": turn_result.blockers,
                     "next_state": turn_result.next_state,
+                    "salvaged": turn_result.salvaged,
                 },
             )
             return MessageResult(
@@ -796,11 +801,13 @@ class WorkflowService:
         session = await self._fetch(session_id)
         _ensure_state(session, _INTERVIEW_STATES | {"needs_human_review"})
 
-        if not session.draft_plan_json:
-            raise HTTPException(
-                status_code=409,
-                detail="Cannot force-ready a session with no draft plan",
-            )
+        # Gate on real STEPS, not merely a truthy dict: a wiped/parse-failed turn
+        # leaves a truthy-but-empty {"steps": []} that slipped past the old
+        # `if not session.draft_plan_json` check and let a 0-step plan proceed
+        # (session 0f9c5646). This is the SOLE status→ready_for_review setter on
+        # the interview bug path, so the guard is load-bearing.
+        if not _draft_has_steps(session.draft_plan_json):
+            raise HTTPException(status_code=409, detail=dict(_EMPTY_PLAN_DETAIL))
 
         session.status = "ready_for_review"
         session.interview_state = "ready_for_review"
@@ -845,6 +852,16 @@ class WorkflowService:
     ) -> PentestSession:
         session = await self._fetch(session_id)
         _ensure_state(session, _TERMINAL_AFTER_REVIEW)
+
+        # Refuse to approve a session with no runnable plan. The scope preview
+        # below is blind to step COUNT (a 0-step plan has 0 violations → valid),
+        # so a wiped interview draft would otherwise approve into a no-op
+        # "completed" run (session 0f9c5646). A pre-seeded executable plan_json
+        # (template lane) satisfies the guard even when the chat draft is empty.
+        if not _draft_has_steps(session.draft_plan_json) and not (
+            session.plan_json or {}
+        ).get("steps"):
+            raise HTTPException(status_code=409, detail=dict(_EMPTY_PLAN_DETAIL))
 
         preview = await self.approval_preview(session_id=session_id)
         if not preview.is_valid:
@@ -1004,6 +1021,29 @@ class WorkflowService:
 
 
 # ── module-level utility used by approve + approval_preview ────────────────
+
+
+def _draft_has_steps(draft_plan: dict | None) -> bool:
+    """True when the draft plan carries at least one step.
+
+    A truthy-but-empty ``{"steps": []}`` (what a wiped/parse-failed interview turn
+    used to leave behind — session 0f9c5646) is NOT a runnable plan; approving it
+    yields a no-op "completed" run. The chokepoints below gate on this instead of
+    a bare ``if not draft_plan`` (which a non-empty dict slips past).
+    """
+    if not isinstance(draft_plan, dict):
+        return False
+    steps = draft_plan.get("steps")
+    return isinstance(steps, list) and bool(steps)
+
+
+_EMPTY_PLAN_DETAIL = {
+    "error": "empty_plan",
+    "message": (
+        "This session has no plan steps. Continue the interview until it "
+        "produces at least one step, or start from a workflow template."
+    ),
+}
 
 
 def _collect_violations(draft_plan: dict, validator: WhitelistValidator) -> list[str]:

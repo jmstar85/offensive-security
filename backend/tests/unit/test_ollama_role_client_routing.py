@@ -76,7 +76,7 @@ async def test_generator_uses_injected_client_over_ollama(monkeypatch):
         def __init__(self) -> None:
             self.calls: list[str] = []
 
-        async def send(self, model_id, messages, system):  # noqa: ANN001
+        async def send(self, model_id, messages, system, max_tokens=4096):  # noqa: ANN001
             self.calls.append(model_id)
             return SimpleNamespace(text="ok", tokens_in=1, tokens_out=1)
 

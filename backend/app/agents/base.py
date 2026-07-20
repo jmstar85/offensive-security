@@ -14,6 +14,26 @@ class RiskLevel(str, enum.Enum):
     CRITICAL = "critical"
 
 
+def filter_resolvable_targets(
+    raw: list[str], fallback: str = "127.0.0.1"
+) -> list[str]:
+    """Drop single-label placeholder hosts (e.g. "jarvis") that cannot resolve —
+    but ONLY when a resolvable IP/CIDR/FQDN target co-exists.
+
+    Mirrors ``NmapAdapter.build_command``'s conditional filter so every adapter
+    treats a bogus project domain the same way: a resolvable token contains "."
+    (FQDN / IPv4 / CIDR), ":" (IPv6), or "/" (CIDR). When EVERY target is
+    single-label (a legitimately-scoped internal engagement with bare hostnames)
+    the raw list is returned unchanged — the filter only prunes a placeholder
+    when there is something resolvable to fall back to. An empty input yields
+    ``[fallback]``.
+    """
+    resolvable = [t for t in raw if ("." in t or ":" in t or "/" in t)]
+    if resolvable:
+        return resolvable
+    return list(raw) or [fallback]
+
+
 @dataclass
 class AgentEvent:
     event_type: str          # "log" | "status" | "finding" | "error"

@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import json as _json
 
-from app.agents.base import AgentAdapter, AgentResult, RiskLevel
+from app.agents.base import (
+    AgentAdapter,
+    AgentResult,
+    RiskLevel,
+    filter_resolvable_targets,
+)
 
 
 class DnsxAdapter(AgentAdapter):
@@ -15,7 +20,11 @@ class DnsxAdapter(AgentAdapter):
         return ["dns_brute", "dns_resolve", "axfr"]
 
     def build_command(self, target: dict, config: dict) -> list[str]:
-        domain = config.get("domain") or (target.get("domains", []) or ["example.com"])[0]
+        # Prefer a resolvable domain over a bogus single-label placeholder
+        # (mirror NmapAdapter); a single-label-only list keeps its first entry.
+        domain = config.get("domain") or filter_resolvable_targets(
+            target.get("domains", []) or ["example.com"]
+        )[0]
         record_types = config.get("record_types", "a,aaaa,cname,ns,mx,txt")
         return ["-d", domain, "-resp", "-a", "-cname", "-r", record_types, "-j"]
 

@@ -1,7 +1,12 @@
 """subfinder adapter — passive subdomain enumeration via ProjectDiscovery."""
 from __future__ import annotations
 
-from app.agents.base import AgentAdapter, AgentResult, RiskLevel
+from app.agents.base import (
+    AgentAdapter,
+    AgentResult,
+    RiskLevel,
+    filter_resolvable_targets,
+)
 
 
 class SubfinderAdapter(AgentAdapter):
@@ -13,7 +18,11 @@ class SubfinderAdapter(AgentAdapter):
         return ["subdomain_enumeration", "passive_dns"]
 
     def build_command(self, target: dict, config: dict) -> list[str]:
-        domain = config.get("domain") or (target.get("domains", []) or ["example.com"])[0]
+        # Prefer a resolvable domain over a bogus single-label placeholder
+        # (mirror NmapAdapter); a single-label-only list keeps its first entry.
+        domain = config.get("domain") or filter_resolvable_targets(
+            target.get("domains", []) or ["example.com"]
+        )[0]
         return ["-d", domain, "-silent", "-oJ"]
 
     def parse_output(self, raw_output: str) -> AgentResult:

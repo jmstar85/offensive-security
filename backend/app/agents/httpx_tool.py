@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import json as _json
 
-from app.agents.base import AgentAdapter, AgentResult, RiskLevel
+from app.agents.base import (
+    AgentAdapter,
+    AgentResult,
+    RiskLevel,
+    filter_resolvable_targets,
+)
 
 _DISALLOWED_FLAGS = {"-fuzz", "-x", "-method"}
 
@@ -26,9 +31,12 @@ class HttpxAdapter(AgentAdapter):
             if flag.lower() in _DISALLOWED_FLAGS:
                 raise ValueError(f"httpx: disallowed flag {flag!r} for tier=passive_low_touch")
             cmd.append(flag)
-        targets = target.get("domains", []) or []
-        if not targets:
+        domains = target.get("domains", []) or []
+        if not domains:
             raise ValueError("httpx: no domains supplied in target")
+        # Drop bogus single-label domains when a resolvable one co-exists (mirror
+        # NmapAdapter); a single-label-only target list is kept as-is.
+        targets = filter_resolvable_targets(domains)
         for d in targets:
             cmd.extend(["-u", d])
         return cmd

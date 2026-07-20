@@ -42,6 +42,13 @@ JSON envelope with these fields:
 - reasoning: string — your one-paragraph rationale for the proposed plan or for asking.
 - draft_plan: object with `steps: [{order, agent, action, description, config, tier}]`
   enumerating the SubTasks to run if the prompt is clear enough. Empty list if not.
+  Keep this a CONCISE INTERVIEW SKELETON — a downstream planner expands it into the
+  full run, so do NOT enumerate every port/host/template here. Emit AT MOST 8
+  high-level steps (collapse repetitive per-port / per-host / per-source work into
+  ONE step) and keep each `description` to a single short line (≤ ~12 words). This
+  keeps the envelope inside the response budget so it is never truncated. ALWAYS
+  include each step's `config` (target / host / ip_ranges / domains) — the scope
+  preview validates against it; trim only the verbose prose, never the config.
   You are given an AVAILABLE TOOLS list (prepended to the user message). Every
   step MUST be grounded in that list — this is what makes the plan executable:
     * `agent` MUST be EXACTLY one of the available tool slugs (copy it verbatim).
@@ -172,10 +179,18 @@ class Generator(Role):
             context.get("anthropic_model_id")
         )
 
+        # Raise the response budget for the interview draft_plan. Generator is
+        # interview-only (instantiated solely by AmbiguityLoop), so reading the
+        # interview budget from settings here is correct; ``context`` keeps it
+        # per-turn overridable. Without this, a multi-step draft overflows the
+        # provider's 4096 default and truncates (session 0f9c5646).
         response = await client.send(
             model_id=model_id,
             messages=messages,
             system=self.system_prompt,
+            max_tokens=int(
+                context.get("interview_max_tokens") or settings.interview_max_tokens
+            ),
         )
 
         return RoleResult(

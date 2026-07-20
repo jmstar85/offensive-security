@@ -100,3 +100,52 @@ async def test_force_ready_rejects_session_with_empty_draft(db):
             session_id=s.id, override_reason=reason, user=user,
         )
     assert ei.value.status_code == 409
+
+
+# ── zero-step approve guard (session 0f9c5646 backstop) ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_force_ready_rejects_wiped_steps_list(db):
+    """A truthy-but-empty {"steps": []} (the wiped-draft shape) slipped past the
+    old `if not draft` guard; force-ready must now reject it with empty_plan."""
+    from fastapi import HTTPException
+
+    s = await _seed_session(db, draft={"steps": []})
+    svc = WorkflowService(db)
+    reason = "operator confirmed scope coverage after manual verification of targets"
+    with pytest.raises(HTTPException) as ei:
+        await svc.force_ready_for_review(session_id=s.id, override_reason=reason, user=_user())
+    assert ei.value.status_code == 409
+    assert ei.value.detail["error"] == "empty_plan"
+    assert s.status == "interviewing"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_zero_step_draft(db):
+    """approve() must refuse a 0-step draft with no executable plan_json — the
+    scope preview is blind to step count, so this is the load-bearing backstop."""
+    from fastapi import HTTPException
+
+    s = await _seed_session(db, status="ready_for_review", draft={"steps": []})
+    svc = WorkflowService(db)
+    with pytest.raises(HTTPException) as ei:
+        await svc.approve(session_id=s.id, user=_user())
+    assert ei.value.status_code == 409
+    assert ei.value.detail["error"] == "empty_plan"
+    assert s.approved_at is None  # never approved
+
+
+@pytest.mark.asyncio
+async def test_approve_allows_empty_chat_draft_when_template_plan_json_present(db):
+    """A pre-seeded executable plan_json (template lane) satisfies the guard even
+    when the chat draft is empty — the guard must not block template approvals."""
+    s = await _seed_session(db, status="ready_for_review", draft={})
+    s.plan_json = {
+        "version": 1, "kind": "workflow", "edges": [],
+        "steps": [{"id": "n1", "order": 1, "agent": "nmap", "action": "port_scan",
+                   "config": {"scan_profile": "standard"}}],
+    }
+    await db.flush()
+    updated = await WorkflowService(db).approve(session_id=s.id, user=_user())
+    assert updated.status == "approved"

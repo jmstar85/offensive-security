@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # (workflow_max_interview_turns) remains the escape hatch to needs_human_review.
     osa_interview_autoblock_enabled: bool = True
     osa_interview_autoblock_threshold: float = 0.20
+    # Interview/Generator response budget. MUST exceed every provider send
+    # default (4096) so a multi-step draft_plan JSON is not truncated mid-response
+    # — a truncated envelope collapses to ambiguity 1.0 and sticks the interview
+    # (session 0f9c5646). Truncation salvage (ambiguity_loop) is the safety net;
+    # this lowers the probability of hitting it.
+    interview_max_tokens: int = 8192
     workflow_force_approve_min_reason_chars: int = 32
     workflow_opus_requires_admin: bool = True
 
