@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/minsung.jung/myproject/offensive-security/backend && python3 -c \\\"\\nimport enum\\nfrom pydantic import BaseModel\\nimport uuid\\nclass UserRole(str, enum.Enum):\\n    ADMIN='admin'\\n...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 3, in <module>\nModuleNotFoundError: No module named 'pydantic'",
+  "timestamp": "2026-06-23T13:22:46.107Z",
+  "retry_count": 1
+}

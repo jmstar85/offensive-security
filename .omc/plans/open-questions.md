@@ -42,3 +42,27 @@ Security review verdict was **APPROVED** (0 Critical / 0 High); the following Me
 - [ ] **JWT in WS query param (Low #9)** — Token in URL (logged by reverse proxies, browser history). Matches existing v3.2.1 `useWebSocket` pattern — pre-dates v4.0. — *Owner: Security. Due: v3.4 uniform refactor. Fix: pass via `Sec-WebSocket-Protocol` subprotocol header.*
 
 **Architect + Code-Reviewer agents** quota-exhausted on this Phase 4 round; their re-validation should run in a future session once quota resets. The security verdict alone is sufficient to approve v4.0 for PR split + operator review per the autopilot Phase 4 contract (multi-perspective approval — security is the highest-stakes lane).
+
+---
+
+## ralplan-osa-xbow-autonomous-v1 — 2026-06-11 (deliberate consensus, milestone 1)
+
+Draft plan: `.omc/drafts/ralplan-osa-xbow-autonomous-v1.md`. Pending Architect/Critic review.
+
+- [ ] **CoordinatorPage ConversationTab file path + messages-endpoint shape for the blocking interview reply** — exact `frontend/src/pages/` file and `/pentest-sessions/{id}/messages` round-trip contract for the inline-waiting `ask`. — Drives PR4 (C1) implementation; blocks the user-input affordance. *Owner: Executor. Due: PR4 kickoff.*
+- [ ] **headless/mitmproxy/interactsh recon scope** — in-scope for the recon milestone (real exec) or documented out-of-scope-for-recon? AC4 permits either. — Drives PR6 (C4) build set + the scanme E2E assertions. *Owner: Planner/Architect. Due: before PR6.*
+- [ ] **Flag-flip granularity (PR9)** — single master `osa_xbow_autonomous_enabled`, or flip the four legacy flags (`osa_coordinator_enabled`/`osa_flow_ui_enabled`/`osa_xbow_families_enabled`/`osa_kali_backend_enabled`) independently? — Affects deterministic-fallback selectability under default-ON. *Owner: Architect. Due: PR9.*
+- [ ] **Performer tier-gate parity** — confirm `filter_by_tier_flags` insertion point in `_dispatch_tool` (between `filter_plan_steps` and `RiskFilter`) matches the legacy `service.py:274` ordering exactly; any divergence is a safety regression. — *Owner: Security. Due: PR3.*
+- [ ] **WS IDOR carryover intersects C6** — PR1 fixes the WS path mismatch but does NOT close the session-team authorization IDOR (Medium #1, above) nor JWT-in-query (Low #9). Decide whether to fold the team-auth check into PR1 or keep it as the tracked v3.4 must-fix. — *Owner: Security. Due: PR1.*
+
+---
+
+## ralplan-osa-xbow-autonomous-v1 — 2026-06-11 (FINAL consensus, pending approval — consensus NOT fully reached)
+
+Final plan: `.omc/plans/ralplan-osa-xbow-autonomous-v1.md`. Status: **pending approval**. The final Architect review was BLOCKING and the final Critic verdict REJECT — both for the same root cause (the "verbatim 62-216" framing). This revision propagates the prescribed fix into every normative section, but a fresh adversarial pass was not run within the cycle budget, so the items below are sign-off gates carried into implementation.
+
+- [ ] **Helper-boundary correctness (was the BLOCKING/REJECT root cause)** — confirm at PR2 that `execute_tool_through_safety_chain` owns ONLY `get_adapter().execute` + the four runtime brakes and returns structured results, and that NO `AgentExecution` row-creation/finalization site moves; the LIVE harness must diff `agent_execution` row COUNT + creation-ORDER, not just `audit_log`. — *Owner: Architect/Executor. Due: PR2. BLOCKING gate.*
+- [ ] **AST-guard receiver-resolution envelope** — the pinned heuristic (flag `.execute` on a name bound from `get_adapter(...)` in the same function, with the `get_adapter(`-token-location fallback) must be demonstrated on the real tree with its false-positive/negative envelope documented BEFORE PR2 flips the xfail. `get_adapter()` is dynamically typed; `ast` cannot type-resolve the receiver. — *Owner: Executor. Due: PR0, before PR2.*
+- [ ] **C7 chain-decomposition safety-reviewer sign-off** — no single function runs the full spec-ordered chain end-to-end; the immutable-chain invariant is now a distributed, test-enforced property (per-lane plan-time filter trio + runtime brake helper). A safety reviewer must consciously accept this decomposition. — *Owner: Security. Due: PR9.*
+- [ ] **`whitelist_rules` provenance for the session-scoped autonomous EgressMonitor (PROMOTED to hard precondition)** — no longer deferrable/open; PR4a MUST NOT merge without the provenance pinned at the session-construction site (same path `PlanExecutor` uses at `executor.py:34`, or a documented session-config source). A wrong source silently disables egress filtering on the only live-exec path. — *Owner: Architect/Security. Due: PR4a precondition.*
+- [ ] **PR4 split coupling re-review** — PR4 was split into PR4a (pure-safety wiring + per-dispatch tier gate + own `AgentExecution` lifecycle, spy-verified) and PR4b (Ollama tool-use-loop de-stub); confirm no hidden coupling between the per-dispatch tier gate and the role-loop de-stub forces them back together. — *Owner: Architect. Due: PR4a/PR4b boundary.*

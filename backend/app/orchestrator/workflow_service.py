@@ -33,13 +33,24 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.models.agent_family import AgentFamilyInstance
+from app.models.msgchain import MsgChain
+from app.models.oob import OOBCallback
 from app.models.project import Project, Target
-from app.models.session import PentestSession, WorkflowMessage
+from app.models.report import Report
+from app.models.session import (
+    AgentExecution,
+    AttackScenario,
+    PentestSession,
+    RescopeApproval,
+    TerminalLine,
+    WorkflowMessage,
+)
 from app.models.user import User
 from app.observability.metrics import ambiguity_bucket, metrics
 from app.orchestrator.llm.credential_resolver import CredentialNotFound
@@ -905,6 +916,56 @@ class WorkflowService:
             details={},
         )
         return session
+
+    async def delete_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        user: User,
+    ) -> None:
+        """Permanently delete a session and all of its child rows.
+
+        Every direct child of ``pentest_sessions`` is deleted explicitly, then
+        the session row itself. This is deterministic and DB-portable: three
+        children (``agent_executions``, ``attack_scenarios``, ``reports``) carry
+        a plain FK with no ``ON DELETE CASCADE``, so they MUST be removed before
+        the session; the rest cascade in production Postgres but we delete them
+        explicitly too so the behaviour does not depend on DB-level cascade
+        enforcement (SQLite in tests does not enforce it). All nine children are
+        leaf tables (nothing references their own id), so a flat delete-by-
+        session is complete. ``terminal_lines`` → ``agent_executions`` is
+        ``ON DELETE SET NULL`` and never blocks.
+        """
+        session = await self._fetch(session_id)
+        # Team scoping — surface a 404 (not 403) so we don't leak that a
+        # session belongs to another team.
+        if session.team_id is not None and user.team_id != session.team_id:
+            raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+        # A live run owns a container + background task; deleting its rows
+        # mid-flight would strand both. Require it to finish or be rejected.
+        if session.status == "running":
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete a running session; wait for it to finish or reject it first.",
+            )
+        prev_status = session.status
+        # Children keyed by session_id …
+        for model in (TerminalLine, AgentExecution, AttackScenario, Report):
+            await self._db.execute(delete(model).where(model.session_id == session_id))
+        # … and children keyed by pentest_session_id.
+        for model in (WorkflowMessage, RescopeApproval, MsgChain, OOBCallback, AgentFamilyInstance):
+            await self._db.execute(
+                delete(model).where(model.pentest_session_id == session_id)
+            )
+        await self._db.delete(session)
+        await self._db.flush()
+        await self._audit.log(
+            action="session_deleted",
+            actor_id=str(user.id),
+            target_entity="pentest_session",
+            target_id=str(session_id),
+            details={"prev_status": prev_status},
+        )
 
     # ── helpers ─────────────────────────────────────────────────────────
 

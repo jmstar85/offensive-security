@@ -10,9 +10,9 @@
  */
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { PanelsLeftRight, Plus, Loader2 } from 'lucide-react'
+import { PanelsLeftRight, Plus, Loader2, Trash2 } from 'lucide-react'
 
-import { listProjects, listSessions } from '../api/client'
+import { deleteSession, listProjects, listSessions } from '../api/client'
 import { LegacyPageBanner } from '../components/banners/LegacyPageBanner'
 
 interface SessionRow {
@@ -42,6 +42,7 @@ export default function FlowIndex() {
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<ProjectRow[] | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
     listSessions()
@@ -74,6 +75,29 @@ export default function FlowIndex() {
       navigate('/projects')
     } else {
       setPickerOpen(true)
+    }
+  }
+
+  // Delete a session + its data. Optimistically drop the card on success; a
+  // running session returns 409 (surface the reason so the operator knows to
+  // wait or reject it first).
+  const handleDelete = async (id: string) => {
+    if (
+      !window.confirm(
+        'Delete this session and all of its data (terminal, tasks, agents, findings)? This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    setDeletingId(id)
+    setError(null)
+    try {
+      await deleteSession(id)
+      setSessions((prev) => (prev ?? []).filter((x) => x.id !== id))
+    } catch (e: any) {
+      setError(String(e?.response?.data?.detail ?? e))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -138,10 +162,10 @@ export default function FlowIndex() {
       {sessions !== null && sessions.length > 0 && (
         <ul className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {sessions.map((s) => (
-            <li key={s.id}>
+            <li key={s.id} className="relative group">
               <Link
                 to={`/flow/${s.id}`}
-                className="block border border-border rounded-lg p-3 bg-card hover:bg-muted/40 transition-colors"
+                className="block border border-border rounded-lg p-3 pb-8 bg-card hover:bg-muted/40 transition-colors"
                 data-testid={`flow-session-card-${s.id}`}
               >
                 <div className="flex items-center justify-between mb-1.5">
@@ -169,6 +193,25 @@ export default function FlowIndex() {
                   </p>
                 )}
               </Link>
+              <button
+                type="button"
+                aria-label="Delete session"
+                title="Delete session"
+                disabled={deletingId === s.id}
+                data-testid={`flow-session-delete-${s.id}`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  void handleDelete(s.id)
+                }}
+                className="absolute bottom-2 right-2 p-1.5 rounded-md text-muted-foreground/60 hover:text-rose-600 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition disabled:opacity-50"
+              >
+                {deletingId === s.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
             </li>
           ))}
         </ul>

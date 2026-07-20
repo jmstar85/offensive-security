@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1779632368466,
+  "lastScanned": 1782887316573,
   "projectRoot": "/Users/minsung.jung/myproject/offensive-security",
   "techStack": {
     "languages": [
@@ -18,8 +18,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "cd /Users/minsung.jung/myproject/offensive-security && git add frontend/src/components/FindingsPanel.tsx frontend/src/pages/InteractionDashboard.tsx && git commit -m \"$(cat <<'EOF'\nfix(ui): type-aware FindingsPanel replaces stringly-typed log scan\n\nThe backend already bundles structured AgentResult.findings into the\nterminal status WebSocket event. The old dashboard ignored that payload\nand counted \"[finding]\" substrings in log lines instead, so the rich data\nemitted by parse_gobuster / parse_sqlmap / parse_nikto (and the legacy\nnmap open_port findings) never reached the user.\n\nNew FindingsPanel component groups findings by type with per-type rows:\n  - directory_found: path + status + size\n  - sql_injection:   GET/POST/COOKIE param + technique + payload\n  - web_vuln:        id (OSVDB-...) + message\n  - open_port:       port/proto + service + version\n  - unknown:         JSON fallback (never silently drops)\n\nSeverity is mapped to badge variants. InteractionDashboard adds a\nright-pane toggle between Findings and the legacy Event Stream so logs\nstay accessible. The findings counter in the top bar now reflects the\nactual structured count, not log-substring matches.\n\nFrontend tsc clean.\n\nCo-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>\nEOF\n)\"",
-    "testCommand": ".venv/bin/python -m pytest tests/unit/test_agents_catalog_kali_flag.py tests/unit/ tests/integration/test_pipeline.py tests/integration/test_kali_socket_proxy.py tests/e2e/ -q --ignore=tests/unit/test_planner_v2.py 2>&1 | tail -5",
+    "buildCommand": "make build",
+    "testCommand": "make test",
     "lintCommand": null,
     "devCommand": null,
     "scripts": {}
@@ -48,7 +48,7 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1779632368456,
+      "lastAccessed": 1782887316563,
       "keyFiles": [
         "Dockerfile",
         "alembic.ini",
@@ -59,7 +59,7 @@
       "path": "ci",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1779632368457,
+      "lastAccessed": 1782887316563,
       "keyFiles": [
         "build-images.sh"
       ]
@@ -68,14 +68,14 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1779632368457,
+      "lastAccessed": 1782887316564,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 5,
-      "lastAccessed": 1779632368457,
+      "lastAccessed": 1782887316564,
       "keyFiles": [
         "claude-osint-onboarding.md",
         "deployment.md",
@@ -88,7 +88,7 @@
       "path": "frontend",
       "purpose": null,
       "fileCount": 10,
-      "lastAccessed": 1779632368458,
+      "lastAccessed": 1782887316564,
       "keyFiles": [
         "Dockerfile",
         "index.html",
@@ -101,7 +101,7 @@
       "path": "mcp-server",
       "purpose": null,
       "fileCount": 5,
-      "lastAccessed": 1779632368458,
+      "lastAccessed": 1782887316565,
       "keyFiles": [
         "package-lock.json",
         "package.json",
@@ -112,7 +112,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 1,
-      "lastAccessed": 1779632368458,
+      "lastAccessed": 1782887316565,
       "keyFiles": [
         "lint_kali_dockerfile.sh"
       ]
@@ -121,7 +121,7 @@
       "path": "backend/app",
       "purpose": "Application code",
       "fileCount": 2,
-      "lastAccessed": 1779632368459,
+      "lastAccessed": 1782887316565,
       "keyFiles": [
         "__init__.py",
         "main.py"
@@ -131,7 +131,7 @@
       "path": "frontend/dist",
       "purpose": "Distribution/build output",
       "fileCount": 3,
-      "lastAccessed": 1779632368459,
+      "lastAccessed": 1782887316566,
       "keyFiles": [
         "favicon.svg",
         "index.html",
@@ -142,14 +142,14 @@
       "path": "frontend/node_modules",
       "purpose": "Dependencies",
       "fileCount": 2,
-      "lastAccessed": 1779632368460,
+      "lastAccessed": 1782887316567,
       "keyFiles": []
     },
     "mcp-server/dist": {
       "path": "mcp-server/dist",
       "purpose": "Distribution/build output",
       "fileCount": 28,
-      "lastAccessed": 1779632368460,
+      "lastAccessed": 1782887316568,
       "keyFiles": [
         "index.d.ts",
         "index.d.ts.map",
@@ -160,14 +160,14 @@
       "path": "mcp-server/node_modules",
       "purpose": "Dependencies",
       "fileCount": 1,
-      "lastAccessed": 1779632368460,
+      "lastAccessed": 1782887316569,
       "keyFiles": []
     },
     "mcp-server/src": {
       "path": "mcp-server/src",
       "purpose": "Source code",
       "fileCount": 7,
-      "lastAccessed": 1779632368460,
+      "lastAccessed": 1782887316569,
       "keyFiles": [
         "index.ts",
         "memory-tools.ts",
@@ -178,7 +178,7 @@
       "path": "mcp-server/test",
       "purpose": "Test files",
       "fileCount": 1,
-      "lastAccessed": 1779632368461,
+      "lastAccessed": 1782887316570,
       "keyFiles": [
         "run-tests.mjs"
       ]
@@ -186,99 +186,105 @@
   },
   "hotPaths": [
     {
-      "path": "backend/app/api/v1/pentest_sessions.py",
-      "accessCount": 5,
-      "lastAccessed": 1779633162191,
+      "path": "backend/app/api/v1/users.py",
+      "accessCount": 6,
+      "lastAccessed": 1782221313329,
       "type": "file"
     },
     {
-      "path": "frontend/src/pages/AgentCatalog.tsx",
+      "path": "frontend/src/App.tsx",
       "accessCount": 5,
-      "lastAccessed": 1779633550945,
+      "lastAccessed": 1782220789677,
       "type": "file"
     },
     {
-      "path": "frontend/src/pages/InteractionDashboard.tsx",
-      "accessCount": 5,
-      "lastAccessed": 1779633656136,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/orchestrator/service.py",
+      "path": "backend/tests/integration/test_create_user.py",
       "accessCount": 4,
-      "lastAccessed": 1779633128648,
+      "lastAccessed": 1782221351823,
       "type": "file"
     },
     {
-      "path": "backend/app/api/v1/agents.py",
+      "path": "backend/app/api/v1/auth.py",
       "accessCount": 3,
-      "lastAccessed": 1779633353997,
+      "lastAccessed": 1782133669210,
       "type": "file"
     },
     {
-      "path": "backend/app/models/session.py",
-      "accessCount": 2,
-      "lastAccessed": 1779633109218,
+      "path": "frontend/src/pages/Login.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1782133729543,
       "type": "file"
     },
     {
-      "path": "backend/app/orchestrator/workflow_service.py",
-      "accessCount": 2,
-      "lastAccessed": 1779633142692,
+      "path": "frontend/src/api/client.ts",
+      "accessCount": 3,
+      "lastAccessed": 1782220747203,
       "type": "file"
     },
     {
-      "path": "backend/app/api/v1/feature_flags.py",
-      "accessCount": 2,
-      "lastAccessed": 1779633402389,
+      "path": "frontend/src/pages/Admin.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1782220808469,
       "type": "file"
     },
     {
-      "path": "frontend/src/api/featureFlags.ts",
-      "accessCount": 2,
-      "lastAccessed": 1779633409015,
+      "path": "backend/app/api/deps.py",
+      "accessCount": 1,
+      "lastAccessed": 1782133587906,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/core/security.py",
+      "accessCount": 1,
+      "lastAccessed": 1782133588340,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "accessCount": 1,
+      "lastAccessed": 1782133589078,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/models/audit.py",
+      "accessCount": 1,
+      "lastAccessed": 1782133644230,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages/ResetPassword.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1782133705994,
+      "type": "file"
+    },
+    {
+      "path": "backend/tests/integration/test_reset_password.py",
+      "accessCount": 1,
+      "lastAccessed": 1782133748823,
+      "type": "file"
+    },
+    {
+      "path": "backend/app/core/database.py",
+      "accessCount": 1,
+      "lastAccessed": 1782220670061,
+      "type": "file"
+    },
+    {
+      "path": "frontend/src/pages/CreateUser.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1782220775161,
       "type": "file"
     },
     {
       "path": "backend/app/main.py",
       "accessCount": 1,
-      "lastAccessed": 1779632449179,
+      "lastAccessed": 1782222927808,
       "type": "file"
     },
     {
-      "path": "frontend/src/api/agents.ts",
+      "path": "backend/app/core/config.py",
       "accessCount": 1,
-      "lastAccessed": 1779632451219,
-      "type": "file"
-    },
-    {
-      "path": "backend/alembic/versions/006_msgchains.py",
-      "accessCount": 1,
-      "lastAccessed": 1779633110279,
-      "type": "file"
-    },
-    {
-      "path": "backend/alembic/versions/007_pentest_session_approval_flags.py",
-      "accessCount": 1,
-      "lastAccessed": 1779633118880,
-      "type": "file"
-    },
-    {
-      "path": "backend/tests/unit/test_agents_catalog_kali_flag.py",
-      "accessCount": 1,
-      "lastAccessed": 1779633363895,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/components/FindingsPanel.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1779633633177,
-      "type": "file"
-    },
-    {
-      "path": "docker-compose.yml",
-      "accessCount": 1,
-      "lastAccessed": 1779633983054,
+      "lastAccessed": 1782222928424,
       "type": "file"
     }
   ],

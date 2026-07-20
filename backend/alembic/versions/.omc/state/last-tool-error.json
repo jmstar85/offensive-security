@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"BASE=http://localhost:8000/api/v1\\nTOK=$(curl -s -X POST $BASE/auth/login -H \\\"Content-Type: application/json\\\" -d '{\\\"email\\\":\\\"admin@kt.com\\\",\\\"password\\\":\\\"admin1234\\\"}' | python3 -c \\\"...",
+  "error": "Exit code 1\nsession raw: {\"id\":\"ac397014-048a-49c7-b00c-859b894fe9fb\",\"project_id\":\"6df5a5d4-4ea0-443b-af31-6ab007b9f15c\",\"prompt\":\"Recon scanme.nmap.org with nginx and apache fingerprinting\",\"status\":\"pending\",\"plan_json\":{\"\nSID=ac397014-048a-49c7-b00c-859b894fe9fb\n  [2s] status=pending\n  [4s] status=pending\n  [6s] status=pending\n  [8s] status=pending\n  [10s] status=pending\n  [12s] status=pending\n  [14s] status=pending\n  [16s] status=pending\n  [18s] status=pending\n  [20s] status=pending\n  [22s]...",
+  "timestamp": "2026-06-01T13:31:25.281Z",
+  "retry_count": 1
+}

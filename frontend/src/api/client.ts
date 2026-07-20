@@ -53,6 +53,8 @@ export const listSessions = (project_id?: string) =>
   api.get('/sessions/', { params: project_id ? { project_id } : {} })
 export const getSession = (id: string) => api.get(`/sessions/${id}`)
 export const killSession = (id: string) => api.post(`/sessions/${id}/kill`)
+// Permanently delete a session + its child rows (204). 409 while running.
+export const deleteSession = (id: string) => api.delete(`/pentest-sessions/${id}`)
 
 // Replay sources for /flow panels (Terminal + Tasks). Additive — the panels
 // already render live over WS; these let a reloaded panel rebuild prior state.
