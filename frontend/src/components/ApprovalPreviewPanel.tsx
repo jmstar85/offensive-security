@@ -1,12 +1,14 @@
 import { useState } from 'react'
 
+// The three tier flags the backend actually enforces (exploit_allowlist.py
+// TIER_REQUIRED_FLAG). The former mitm_proxy/headless_browser/interactsh toggles
+// were cosmetic — buildFlagsForPost OR'd them into approved_mid_active and the
+// backend never read them individually, so they are removed in favour of one
+// honest per-tier control.
 export interface ApprovalFlags {
   approved_active_recon?: boolean
-  approved_active_exploit?: boolean
   approved_mid_active?: boolean
-  approved_mitm_proxy?: boolean
-  approved_headless_browser?: boolean
-  approved_interactsh?: boolean
+  approved_active_exploit?: boolean
 }
 
 interface Props {
@@ -44,26 +46,12 @@ export default function ApprovalPreviewPanel({
 
   const [flags, setFlags] = useState<ApprovalFlags>({
     approved_active_recon: false,
-    approved_active_exploit: false,
     approved_mid_active: false,
-    approved_mitm_proxy: false,
-    approved_headless_browser: false,
-    approved_interactsh: false,
+    approved_active_exploit: false,
   })
 
   function toggle(key: keyof ApprovalFlags) {
     setFlags((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
-
-  function buildFlagsForPost(): ApprovalFlags {
-    // If any slug-level mid_active toggle is on, also assert approved_mid_active
-    // so the backend tier gate is satisfied.
-    const midActiveAggregated =
-      flags.approved_mid_active ||
-      flags.approved_mitm_proxy ||
-      flags.approved_headless_browser ||
-      flags.approved_interactsh
-    return { ...flags, approved_mid_active: midActiveAggregated }
   }
 
   return (
@@ -120,74 +108,61 @@ export default function ApprovalPreviewPanel({
             </div>
           )}
 
-          {/* Approval flag toggles */}
-          <div className="space-y-3 text-xs">
-            {/* Active recon */}
-            <div className="space-y-1">
-              <div className="text-gray-500 uppercase tracking-wide font-semibold">Active recon</div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!flags.approved_active_recon}
-                  onChange={() => toggle('approved_active_recon')}
-                  className="accent-emerald-500"
-                />
-                <span className="text-gray-300">Active recon approved</span>
-              </label>
+          {/* Tier authorization — each control maps 1:1 to a flag the backend
+              enforces (exploit_allowlist.TIER_REQUIRED_FLAG). A plan step whose
+              tier is not authorized here is dropped before execution. Passive
+              recon needs no flag. */}
+          <div className="space-y-2 text-xs">
+            <div className="text-gray-500 uppercase tracking-wide font-semibold">
+              Authorize by tier
             </div>
-
-            {/* Mid-active */}
-            <div className="space-y-1">
-              <div className="text-gray-500 uppercase tracking-wide font-semibold">Mid-active</div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!flags.approved_mitm_proxy}
-                  onChange={() => toggle('approved_mitm_proxy')}
-                  className="accent-yellow-400"
-                />
-                <span className="text-gray-300">MITM proxy interception</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!flags.approved_headless_browser}
-                  onChange={() => toggle('approved_headless_browser')}
-                  className="accent-yellow-400"
-                />
-                <span className="text-gray-300">Headless browser probes</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!flags.approved_interactsh}
-                  onChange={() => toggle('approved_interactsh')}
-                  className="accent-yellow-400"
-                />
-                <span className="text-gray-300">OOB Collaborator (Interactsh)</span>
-              </label>
-            </div>
-
-            {/* Active exploit */}
-            <div className="space-y-1">
-              <div className="text-gray-500 uppercase tracking-wide font-semibold">Active exploit</div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!flags.approved_active_exploit}
-                  onChange={() => toggle('approved_active_exploit')}
-                  className="accent-red-500"
-                />
-                <span className="text-gray-300">Active exploit approved</span>
-              </label>
-            </div>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!flags.approved_active_recon}
+                onChange={() => toggle('approved_active_recon')}
+                className="accent-emerald-500 mt-0.5"
+              />
+              <span className="text-gray-300">
+                <span className="text-emerald-300 font-medium">Active recon</span> — port
+                scans, directory/subdomain enumeration, OOB collaborator callbacks
+              </span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!flags.approved_mid_active}
+                onChange={() => toggle('approved_mid_active')}
+                className="accent-yellow-400 mt-0.5"
+              />
+              <span className="text-gray-300">
+                <span className="text-yellow-300 font-medium">Mid-active tooling</span> —
+                MITM proxy, headless browser, session replay
+              </span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!flags.approved_active_exploit}
+                onChange={() => toggle('approved_active_exploit')}
+                className="accent-red-500 mt-0.5"
+              />
+              <span className="text-gray-300">
+                <span className="text-red-300 font-medium">Active exploit</span> —
+                SQLi/XSS/command-injection, Metasploit, PyRIT
+              </span>
+            </label>
+            <p className="text-gray-500">
+              Passive recon runs without a flag. Steps whose tier you don't authorize
+              are dropped before execution (not silently attempted).
+            </p>
           </div>
 
           <div className="flex gap-2">
             <button
               type="button"
               disabled={!canApprove || approving}
-              onClick={() => onApprove(buildFlagsForPost())}
+              onClick={() => onApprove(flags)}
               className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-3 py-1.5 rounded text-sm font-medium"
             >
               {approving ? 'Approving…' : 'Approve & execute'}

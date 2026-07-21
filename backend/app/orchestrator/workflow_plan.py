@@ -9,11 +9,59 @@ class WorkflowPlanError(ValueError):
     """Raised when a workflow definition is not executable."""
 
 
-_EXECUTABLE_AGENT_TYPES = {"nmap", "nuclei", "metasploit", "pyrit"}
-
-
 def executable_agent_types() -> set[str]:
-    return set(_EXECUTABLE_AGENT_TYPES)
+    """The set of agent slugs the executor can actually run.
+
+    Execution truth is the adapter registry (``PlanExecutor`` resolves each step's
+    adapter via ``get_adapter``), NOT a hardcoded list. A stale 4-slug literal
+    ({nmap,nuclei,metasploit,pyrit}) previously rejected httpx/kali_*/subfinder/
+    dnsx/passive_recon — all real, runnable slugs — which made ``approve()`` drop
+    the operator's reviewed interview plan (session 09484046) and blocked
+    saved/template replay of those agents.
+    """
+    from app.agents.registry import list_agent_types  # local import: avoid cycle
+
+    return set(list_agent_types())
+
+
+def chat_draft_to_workflow_plan(draft: dict[str, Any]) -> dict[str, Any]:
+    """Adapt a chat-shaped interview draft into an executable workflow plan.
+
+    The interview Generator emits steps shaped ``{order, agent(tool-slug), action,
+    description, config, tier}`` with no ``id``/``edges`` — display metadata, not a
+    runnable DAG. This turns the operator's REVIEWED + tier-approved steps into the
+    exact steps that run on the deterministic ``PlanExecutor`` lane instead of
+    being discarded for an LLM-regenerated plan.
+
+    Step ids are keyed off the LOOP INDEX (not the LLM-supplied ``order``, which
+    may duplicate or be omitted → id collision → normalize failure → silent
+    autonomous fallback). ``tier`` is intentionally dropped: ``normalize`` strips
+    it and the orchestrator re-derives the authoritative registry tier and
+    re-applies the approval-flag gate, so the LLM's label can never loosen
+    authorization. Raises ``WorkflowPlanError`` (via ``normalize``) when any agent
+    is not an executable registry slug, so the caller can fall back to the
+    autonomous lane.
+    """
+    raw_steps = draft.get("steps") or []
+    steps: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_steps, start=1):
+        if not isinstance(raw, dict):
+            raise WorkflowPlanError("Each draft step must be an object")
+        steps.append({
+            "id": f"s{index}",
+            "order": raw.get("order") or index,
+            "agent": raw.get("agent") or raw.get("agent_type"),
+            "action": raw.get("action") or "",
+            "description": raw.get("description") or "",
+            "config": raw.get("config") or {},
+        })
+    edges = [
+        {"source": steps[i]["id"], "target": steps[i + 1]["id"]}
+        for i in range(len(steps) - 1)
+    ]
+    return normalize_workflow_plan(
+        {"version": 1, "kind": "workflow", "steps": steps, "edges": edges}
+    )
 
 
 def normalize_workflow_plan(plan: dict[str, Any]) -> dict[str, Any]:

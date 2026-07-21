@@ -185,9 +185,21 @@ class Performer:
             role_client_inputs = self.state.context.get("role_client_inputs")
             client_factory = None
             if role_client_inputs:
-                from app.orchestrator.roles.llm_provider import build_client_factory
+                from app.orchestrator.roles.llm_provider import (
+                    build_client_factory,
+                    build_send_model_resolver,
+                )
 
                 client_factory = build_client_factory(**role_client_inputs)
+                # Coherent per-role send-model from the SAME session as the client
+                # (fixes copilot-client + Anthropic-model → 400 model_not_supported).
+                # Every role reads this from context before the Anthropic-biased
+                # legacy fallback. Same source + lifetime as client_factory.
+                _session = role_client_inputs.get("session")
+                if _session is not None:
+                    self.state.context["send_model_resolver"] = (
+                        build_send_model_resolver(_session)
+                    )
 
             results: list[RoleResult] = []
             for role_name in ROLE_TOPOLOGICAL_ORDER:

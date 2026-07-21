@@ -26,10 +26,12 @@ def test_session_manager_registered_with_mid_active_tier():
     assert entry.tier == "mid_active"
 
 
-def test_interactsh_collaborator_registered_passive_low_touch():
+def test_interactsh_collaborator_registered_active_recon():
+    # OOB collaborator induces target->attacker callbacks (target contact), so it
+    # is gated behind approved_active_recon, not run flag-free (session 09484046).
     entry = get_tool_entry("interactsh_collaborator")
     assert entry is not None
-    assert entry.tier == "passive_low_touch"
+    assert entry.tier == "active_recon"
 
 
 def test_kali_xsstrike_registered_active_exploit():

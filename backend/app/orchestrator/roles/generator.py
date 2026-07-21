@@ -175,8 +175,11 @@ class Generator(Role):
         # explicit context override else the vendor default id (unchanged); Ollama
         # → the configured ollama model. The autonomous lane never sets
         # ``send_model_id`` → byte-identical to the prior behavior.
-        model_id = context.get("send_model_id") or resolve_role_send_model(
-            context.get("anthropic_model_id")
+        _resolver = context.get("send_model_resolver")
+        model_id = (
+            context.get("send_model_id")
+            or (_resolver(self.name) if _resolver else None)
+            or resolve_role_send_model(context.get("anthropic_model_id"))
         )
 
         # Raise the response budget for the interview draft_plan. Generator is

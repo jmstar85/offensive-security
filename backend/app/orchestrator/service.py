@@ -326,6 +326,26 @@ class OrchestratorService:
                 details={"blocked": blocked_steps},
             )
 
+        # Make an UNDER-AUTHORIZED run explicit: when steps were dropped only
+        # because their tier lacked the required approval flag, the operator would
+        # otherwise see a silent "0 findings / completed" (session 09484046). Emit
+        # a distinct event with the count + reasons so the UI can say "N steps
+        # need active_recon/mid_active/active_exploit approval" instead.
+        if tier_blocked:
+            await event_bus.publish(str(session_id), {
+                "type": "steps_dropped_by_authz",
+                "dropped": len(tier_blocked),
+                "reasons": sorted({
+                    s.get("block_reason", "")
+                    for s in tier_blocked
+                    if isinstance(s, dict) and s.get("block_reason")
+                }),
+                "hint": (
+                    "Grant the required tier flag on the approval gate "
+                    "(or refine the plan) and re-run."
+                ),
+            }, topic="tasks")
+
         await event_bus.publish(str(session_id), {
             "type": "session_update",
             "status": "executing",

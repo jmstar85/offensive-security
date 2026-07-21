@@ -95,9 +95,16 @@ class Adviser(Role):
 
         recent = str(context.get("pentester_output", ""))[:1000]
         tin = tout = 0
+        # Session-coherent per-role send-model (autonomous lane) before the
+        # Anthropic-biased legacy fallback — same fix as generator/pentester.
+        _resolver = context.get("send_model_resolver")
+        _model_id = (
+            (_resolver(self.name) if _resolver else None)
+            or resolve_role_send_model(context.get("anthropic_model_id"))
+        )
         try:
             resp = await client.send(
-                model_id=resolve_role_send_model(context.get("anthropic_model_id")),
+                model_id=_model_id,
                 messages=[{
                     "role": "user",
                     "content": (

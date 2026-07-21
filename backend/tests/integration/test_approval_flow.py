@@ -111,10 +111,33 @@ async def test_approve_succeeds_when_all_in_scope(db):
     assert updated.status == "approved"
     assert updated.approved_at is not None
     assert updated.approved_by == user.id
-    # A chat-shaped interview draft (order/agent/action/tier, no `id`, tool-slug
-    # agents) is NOT promoted to plan_json — promoting it would route the run to
-    # the saved_workflow lane and immediately fail normalize_workflow_plan. It
-    # stays None so the lane gate picks fresh_plan → the autonomous engine (Gap A).
+    # osa_promote_interview_plan_enabled (default ON): the chat-shaped interview
+    # draft (order/agent/action/tier, no `id`, tool-slug agents) is now ADAPTED
+    # into an executable plan_json so the operator's reviewed, tier-approved steps
+    # run deterministically on the PlanExecutor lane instead of being discarded
+    # for an LLM-regenerated plan. The registry-derived executable set includes
+    # passive_recon, so the adapt succeeds.
+    assert updated.plan_json is not None
+    assert [st["agent"] for st in updated.plan_json["steps"]] == ["passive_recon"]
+    assert updated.plan_json["steps"][0]["id"]  # synthesized id present
+
+
+@pytest.mark.asyncio
+async def test_approve_leaves_plan_none_when_promotion_flag_off(db, monkeypatch):
+    """With the flag OFF, a chat draft is NOT promoted → plan_json stays None →
+    the lane gate picks fresh_plan → the autonomous engine (legacy Gap A behavior)."""
+    from app.orchestrator import workflow_service as ws_mod
+
+    monkeypatch.setattr(ws_mod.settings, "osa_promote_interview_plan_enabled", False)
+    s = await _seed(db, draft={
+        "target_summary": "acme staging", "risk_level": "low",
+        "steps": [
+            {"order": 1, "agent": "passive_recon", "action": "passive_dns_recon",
+             "tier": "passive_no_target_contact", "config": {"target": "acme.com"}},
+        ],
+    })
+    updated = await WorkflowService(db).approve(session_id=s.id, user=_user())
+    assert updated.status == "approved"
     assert updated.plan_json is None
 
 

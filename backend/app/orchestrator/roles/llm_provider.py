@@ -79,10 +79,70 @@ def resolve_role_send_model(context_model_id: str | None = None) -> str:
 
     Anthropic → an explicit context override else the vendor default id (matches the
     Generator's prior behavior); Ollama → the configured ollama model.
+
+    NOTE: this global-switch fallback is Anthropic-biased and is NOT session-aware,
+    so on the per-session autonomous lane the roles must prefer
+    ``resolve_session_role_send_model`` (via the ``send_model_resolver`` in
+    context) — otherwise a copilot/ollama session's client receives an Anthropic
+    id and the provider rejects it (400 ``model_not_supported``).
     """
     if _provider() == "ollama":
         return settings.ollama_model
     return context_model_id or settings.anthropic_default_model_anthropic_id
+
+
+def to_anthropic_vendor_id(model_id: str) -> str:
+    """Map an Anthropic ALIAS to its vendor API id; pass everything else through.
+
+    Mirrors ``WorkflowService._resolved_anthropic_id`` so copilot/ollama/openai
+    ids (and raw test ids) pass through unchanged while the internal Anthropic
+    aliases resolve to the id the Anthropic API actually expects.
+    """
+    if model_id == settings.session_default_model:
+        return settings.session_default_model_anthropic_id
+    if model_id == settings.anthropic_default_model:
+        return settings.anthropic_default_model_anthropic_id
+    if model_id == getattr(settings, "anthropic_admin_model", None):
+        return settings.anthropic_admin_model_anthropic_id
+    return model_id
+
+
+def resolve_session_role_send_model(session: Any, role: str) -> str:
+    """The send-model id for *role* on *session*.
+
+    Mirrors ``resolve_session_role_client``'s provider/model precedence EXACTLY so
+    the send-model is COHERENT with the resolved client. The bug this fixes: the
+    client was resolved from the session provider (e.g. copilot) but the
+    send-model came from the Anthropic-biased ``resolve_role_send_model`` default,
+    so a copilot client received an Anthropic id → 400 ``model_not_supported`` →
+    the role (incl. the tool-dispatching Pentester) failed → 0 executions.
+
+    Precedence: ``session.model_map[role]`` → ``session.llm_provider_pref`` (then
+    ``session.model_id`` or the provider default) → the global switch. Anthropic
+    aliases are mapped to their vendor id; copilot/ollama/openai ids pass through.
+    """
+    model_map = getattr(session, "model_map", None) or {}
+    override = model_map.get(role)
+    if override:
+        model = override
+    elif getattr(session, "llm_provider_pref", None) is not None:
+        model = session.model_id or default_model_for(session.llm_provider_pref)
+    else:
+        model = default_model_for(_provider())
+    return to_anthropic_vendor_id(model)
+
+
+def build_send_model_resolver(session: Any):
+    """Return ``resolver(role_name) -> send_model_id`` bound to *session*.
+
+    Stashed in the Performer context (mirrors ``build_client_factory``) so every
+    role resolves its send-model from the same session source as its client.
+    """
+
+    def resolver(role_name: str) -> str:
+        return resolve_session_role_send_model(session, role_name)
+
+    return resolver
 
 
 # ── Per-session, per-role client resolution (PR3 / PM1) ──────────────────────

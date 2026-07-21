@@ -224,3 +224,33 @@ async def test_send_message_persists_workflow_messages(db):
     assert assistant_row.ambiguity_after == Decimal("0.500")
     assert assistant_row.tokens_in == 80
     assert assistant_row.tokens_out == 120
+
+
+@pytest.mark.asyncio
+async def test_duplicate_first_turn_returns_409_not_500(db):
+    """A reload / double-submit during the slow first turn re-inserts (session, 0,
+    user) and hits uq_workflow_messages_session_turn_role — must surface a clean
+    409, not an unhandled 500 (session 09484046)."""
+    from fastapi import HTTPException
+
+    from app.models.session import WorkflowMessage
+
+    project = await _seed_project(db)
+    user = _user()
+    mock = _mock_client_returning(
+        {"ambiguity": 0.5, "blockers": [], "reasoning": "", "draft_plan": {"steps": []}}
+    )
+    svc = WorkflowService(db, model_client=mock)
+    session = await svc.create_draft(
+        project_id=project.id, initial_prompt="scan acme.com", user=user,
+    )
+    # An in-flight first user turn already persisted (turn_index still 0).
+    db.add(WorkflowMessage(
+        pentest_session_id=session.id, role="user", content="scan acme.com", turn_index=0,
+    ))
+    await db.flush()
+
+    with pytest.raises(HTTPException) as ei:
+        await svc.send_message(session_id=session.id, user_message="scan acme.com", user=user)
+    assert ei.value.status_code == 409
+    assert ei.value.detail["error"] == "turn_in_progress"

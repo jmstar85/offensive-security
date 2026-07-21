@@ -34,6 +34,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -430,7 +431,13 @@ class WorkflowService:
 
         turn_index = session.interview_turn_count
 
-        # 1) persist user turn
+        # 1) persist user turn. turn_index only advances after a turn SUCCEEDS
+        # (below), so a reload / remount / double-submit during a slow first turn
+        # re-enters with the same (session, turn_index=0, role='user') and hits the
+        # uq_workflow_messages_session_turn_role unique constraint. Translate that
+        # race into a clean 409 instead of an unhandled 500 (session 09484046). A
+        # rollback is required first — the AsyncSession is in PendingRollback after
+        # a failed flush.
         user_msg = WorkflowMessage(
             pentest_session_id=session.id,
             role="user",
@@ -438,7 +445,25 @@ class WorkflowService:
             turn_index=turn_index,
         )
         self._db.add(user_msg)
-        await self._db.flush()
+        try:
+            await self._db.flush()
+        except IntegrityError as exc:
+            await self._db.rollback()
+            # Match the duplicate-turn constraint portably: Postgres surfaces the
+            # constraint NAME, SQLite (tests) surfaces the column list.
+            _err = str(getattr(exc, "orig", exc))
+            if (
+                "uq_workflow_messages_session_turn_role" not in _err
+                and "turn_index" not in _err
+            ):
+                raise
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "turn_in_progress",
+                    "message": "An interview turn is already in progress for this session.",
+                },
+            )
 
         # v4.0 P4 flag-gated branch — route the chat turn through AmbiguityLoop
         # (Generator role + Memorist auto-call + msgchain persistence) when
@@ -894,6 +919,7 @@ class WorkflowService:
         # session's plan_json None → the autonomous lane runs (as the driver does).
         from app.orchestrator.workflow_plan import (  # noqa: PLC0415
             WorkflowPlanError,
+            chat_draft_to_workflow_plan,
             normalize_workflow_plan,
         )
 
@@ -902,7 +928,21 @@ class WorkflowService:
             try:
                 normalize_workflow_plan(draft)
             except WorkflowPlanError:
-                pass  # chat-shaped interview draft — do NOT promote
+                # Chat-shaped interview draft (no ids, tool-slug agents) fails the
+                # workflow schema. Adapt it into an executable plan so the
+                # operator's REVIEWED, tier-approved steps run deterministically on
+                # the PlanExecutor lane instead of being discarded for an
+                # LLM-regenerated plan (session 09484046). Unknown slug → still
+                # unadaptable → leave plan_json None → the autonomous lane runs. The
+                # tier/scope gates re-apply on the deterministic lane too, so this
+                # cannot bypass authorization.
+                if not session.plan_json and getattr(
+                    settings, "osa_promote_interview_plan_enabled", True
+                ):
+                    try:
+                        session.plan_json = chat_draft_to_workflow_plan(draft)
+                    except WorkflowPlanError:
+                        pass
             else:
                 session.plan_json = draft
         await self._db.flush()

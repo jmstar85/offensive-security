@@ -275,7 +275,11 @@ _REGISTRY: dict[str, ToolEntry] = {
         slug="interactsh_collaborator",
         adapter_cls=InteractshAdapter,
         docker_image="osa-interactsh:latest",
-        tier="passive_low_touch",
+        # active_recon, NOT passive: provisioning an OOB collaborator induces the
+        # TARGET to make outbound DNS/HTTP callbacks to attacker-controlled infra —
+        # that IS target contact, so it must be gated behind approved_active_recon
+        # rather than running flag-free under passive_low_touch (session 09484046).
+        tier="active_recon",
         capabilities=("oob_dns", "oob_http"),
         applicable_domain_tags=frozenset({"web", "api", "network"}),
         default_risk_band=RiskLevel.LOW,

@@ -238,6 +238,13 @@ class Settings(BaseSettings):
     # scanme E2E verified the full loop. The deterministic lane is the explicit-OFF
     # offline fallback.
     osa_xbow_autonomous_enabled: bool = True
+    # When on, approve() adapts a chat-shaped interview draft into an executable
+    # plan_json so the operator's REVIEWED, tier-approved steps run deterministically
+    # on the PlanExecutor lane (WYSIWYG + immune to run-time LLM/model-routing
+    # failures) instead of being discarded for an autonomous LLM-regenerated plan
+    # (session 09484046). Falls back to the autonomous lane when the draft can't be
+    # adapted (unknown agent slug). Tier/scope gates still govern on both lanes.
+    osa_promote_interview_plan_enabled: bool = True
 
     # Sidecar feature flags (W3) — UI gating only, sidecars are managed by
     # docker-compose and IMAGE_REGEX, not by these booleans

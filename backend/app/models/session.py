@@ -2,7 +2,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -114,6 +124,15 @@ class PentestSession(Base, UUIDMixin, TimestampMixin):
 
 class WorkflowMessage(Base, UUIDMixin):
     __tablename__ = "workflow_messages"
+    # Mirror migration 003's constraint on the MODEL so the schema is enforced in
+    # tests (SQLite builds from metadata, not migrations) and the send_message
+    # duplicate-turn 409 guard is exercised the same way it is in Postgres.
+    __table_args__ = (
+        UniqueConstraint(
+            "pentest_session_id", "turn_index", "role",
+            name="uq_workflow_messages_session_turn_role",
+        ),
+    )
 
     pentest_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
