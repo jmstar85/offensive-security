@@ -96,12 +96,31 @@ export function AgentsTab({ sessionId }: { sessionId: string }) {
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {ROLE_DESCRIPTION[c.role_name] ?? 'Role chain'}
-            </p>
-            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-              {c.message_count} message{c.message_count === 1 ? '' : 's'}
-            </p>
+            {ROLE_DESCRIPTION[c.role_name] && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {ROLE_DESCRIPTION[c.role_name]}
+              </p>
+            )}
+            {c.messages && c.messages.length > 0 ? (
+              <div className="mt-1.5 space-y-1" data-testid={`agent-convo-${c.role_name}`}>
+                {c.messages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={
+                      m.role === 'assistant'
+                        ? 'text-xs text-foreground bg-muted/50 rounded px-2 py-1 whitespace-pre-wrap break-words'
+                        : 'text-[11px] text-muted-foreground whitespace-pre-wrap break-words'
+                    }
+                  >
+                    {m.content}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                {c.message_count} message{c.message_count === 1 ? '' : 's'}
+              </p>
+            )}
           </div>
         </li>
       ))}

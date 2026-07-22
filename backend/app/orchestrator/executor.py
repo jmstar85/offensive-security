@@ -17,12 +17,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import event_bus
+from app.models.msgchain import MsgChain
 from app.models.session import AgentExecution
 from app.orchestrator.rescope_service import DiscoveredTarget, RescopeService
 from app.orchestrator.safety_exec import execute_tool_through_safety_chain
 from app.orchestrator.terminal_sink import TerminalLineSink
 from app.safety.audit import AuditLogger
 from app.safety.egress_monitor import EgressMonitor
+
+
+def _summarize_findings(findings: list) -> str:
+    """A short, human-readable bullet summary of a step's findings for the
+    Agents-tab narration (tolerant of the varied per-tool finding shapes)."""
+    if not findings:
+        return ""
+    lines: list[str] = []
+    for f in findings[:5]:
+        if not isinstance(f, dict):
+            continue
+        label = (
+            f.get("name") or f.get("template_id") or f.get("service")
+            or f.get("type") or f.get("port") or "finding"
+        )
+        detail = f.get("severity") or f.get("url") or f.get("host") or f.get("port") or ""
+        lines.append(f"• {label} {detail}".rstrip())
+    remaining = len(findings) - len(lines)
+    if remaining > 0:
+        lines.append(f"…and {remaining} more")
+    return "\n" + "\n".join(lines) if lines else ""
 
 
 class PlanExecutor:
@@ -147,6 +169,13 @@ class PlanExecutor:
             # terminal status event). Defensive — never raises.
             await terminal_sink.flush()
 
+            # Narrate this step into a MsgChain so the Agents tab shows a
+            # conversational, per-sub-agent record on the DETERMINISTIC lane too —
+            # not only on the autonomous Performer lane (which the Agents tab was
+            # originally wired to). Runs before the row-finalization branches so a
+            # killed/failed/timed-out step is narrated too.
+            await self._narrate_step(session_id, step, config, execution.started_at, result)
+
             if result.killed:
                 return all_findings  # session killed by egress monitor
 
@@ -269,3 +298,65 @@ class PlanExecutor:
             }, topic="tasks")
 
         return all_findings
+
+    async def _narrate_step(
+        self,
+        session_id: uuid.UUID,
+        step: dict,
+        config: dict,
+        started_at: datetime,
+        result,
+    ) -> None:
+        """Write a per-step narration MsgChain (role_name = the tool slug) so the
+        Agents tab renders a conversational record of each sub-agent on the
+        deterministic lane. Best-effort: never raises into the run loop."""
+        try:
+            agent_type = step.get("agent", "agent")
+            action = step.get("action", "")
+            target_str = (
+                config.get("target")
+                or config.get("host")
+                or ", ".join(config.get("ip_ranges") or config.get("domains") or [])
+                or ""
+            )
+            description = step.get("description", "")
+
+            if getattr(result, "killed", False):
+                status = "failed"
+                summary = "Halted — egress monitor tripped (out-of-scope traffic blocked)."
+            elif getattr(result, "safety_violation", None):
+                status = "failed"
+                summary = f"Blocked by safety policy — {result.safety_violation}"
+            elif getattr(result, "error", None):
+                status = "failed"
+                summary = f"Did not complete — {result.error}"
+            else:
+                findings = result.findings or []
+                status = "finished"
+                summary = f"Completed — {len(findings)} finding(s)." + _summarize_findings(findings)
+
+            intent = f"{agent_type} · {action}".rstrip(" ·")
+            if target_str:
+                intent += f"\nTarget: {target_str}"
+            if description:
+                intent += f"\n{description}"
+
+            now = datetime.now(timezone.utc)
+            self._db.add(MsgChain(
+                pentest_session_id=session_id,
+                role_name=agent_type[:32],
+                messages_json=[
+                    {"role": "system", "content": intent},
+                    {"role": "assistant", "content": summary},
+                ],
+                started_at=started_at or now,
+                ended_at=now,
+                status=status,
+            ))
+            await self._db.flush()
+            await event_bus.publish(str(session_id), {
+                "type": "msgchain_updated",
+                "role": agent_type,
+            }, topic="agents")
+        except Exception:  # noqa: BLE001 — narration must never break the run
+            pass

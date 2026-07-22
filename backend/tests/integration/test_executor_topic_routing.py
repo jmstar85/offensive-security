@@ -51,10 +51,12 @@ def _publish_sites() -> list[str]:
     return sites
 
 
-def test_executor_has_six_publish_sites():
+def test_executor_has_seven_publish_sites():
+    # 6 original + the per-step Agents-tab narration event (msgchain_updated,
+    # topic="agents") added by _narrate_step.
     sites = _publish_sites()
-    assert len(sites) == 6, (
-        f"Expected 6 publish sites in executor.py; found {len(sites)}. "
+    assert len(sites) == 7, (
+        f"Expected 7 publish sites in executor.py; found {len(sites)}. "
         "If you added or removed one, update this regression test."
     )
 

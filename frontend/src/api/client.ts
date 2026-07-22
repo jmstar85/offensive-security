@@ -192,6 +192,11 @@ export const decideRescope = (
 ) => api.post(`/pentest-sessions/${id}/rescope`, body)
 
 // v4.0 P3-main — Agents tab data source.
+export interface MsgChainMessage {
+  role: string
+  content: string
+}
+
 export interface MsgChainRow {
   id: string
   role_name: string
@@ -200,6 +205,7 @@ export interface MsgChainRow {
   started_at: string
   ended_at: string | null
   message_count: number
+  messages?: MsgChainMessage[]
 }
 
 export const getMsgChains = (sessionId: string) =>
