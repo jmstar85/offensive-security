@@ -21,6 +21,7 @@ FROM kalilinux/kali-rolling@sha256:${KALI_DIGEST}
 ARG KALI_APT_PKG_GOBUSTER
 ARG KALI_APT_PKG_SQLMAP
 ARG KALI_APT_PKG_NIKTO
+ARG KALI_APT_PKG_FFUF
 ARG KALI_APT_REPO_URL
 
 LABEL org.opencontainers.image.source="https://github.com/your-org/offensive-security" \
@@ -32,12 +33,18 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install the v1 tool set with frozen versions. ca-certificates is required
 # for https targets; everything else stays out via --no-install-recommends.
-RUN echo "deb ${KALI_APT_REPO_URL} kali-rolling main" > /etc/apt/sources.list \
-    && apt-get update \
+# Use the digest-pinned base image's own kali-rolling sources (deb822
+# /etc/apt/sources.list.d/kali.sources). The legacy one-line
+# `> /etc/apt/sources.list` overwrite conflicted with that on current base
+# images ("configured multiple times" → empty index → apt exit 100). The repo
+# origin stays deterministic via the KALI_DIGEST base pin (KALI_APT_REPO_URL is
+# retained for provenance/audit but no longer rewrites sources).
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          gobuster=${KALI_APT_PKG_GOBUSTER} \
          sqlmap=${KALI_APT_PKG_SQLMAP} \
          nikto=${KALI_APT_PKG_NIKTO} \
+         ffuf=${KALI_APT_PKG_FFUF} \
          ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
