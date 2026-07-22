@@ -60,9 +60,11 @@ def test_kali_commix_registered_active_exploit():
 
 # ── Count assertion: 13 legacy + 8 W3 = 21 ──────────────────────────────────
 
-def test_total_slug_count_is_21():
+def test_total_slug_count_is_23():
+    # 21 base + katana + zap (OWASP crawler + DAST added for web coverage).
     slugs = list_agent_types()
-    assert len(slugs) == 21, f"Expected 21 slugs, got {len(slugs)}: {slugs}"
+    assert len(slugs) == 23, f"Expected 23 slugs, got {len(slugs)}: {slugs}"
+    assert "katana" in slugs and "zap" in slugs
 
 
 # ── All mid_active entries have non-empty descriptions ───────────────────────

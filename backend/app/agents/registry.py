@@ -19,6 +19,7 @@ from app.agents.base import AgentAdapter, RiskLevel
 from app.agents.cloudenum import CloudEnumAdapter
 from app.agents.dnsx import DnsxAdapter
 from app.agents.httpx_tool import HttpxAdapter
+from app.agents.katana import KatanaAdapter
 from app.agents.kali_exec import (
     KaliGobusterAdapter,
     KaliNiktoAdapter,
@@ -34,6 +35,7 @@ from app.agents.interactsh import InteractshAdapter
 from app.agents.mitmproxy import MitmProxyAdapter
 from app.agents.subfinder import SubfinderAdapter
 from app.agents.wappalyzer import WappalyzerAdapter
+from app.agents.zap import ZapAdapter
 
 Tier = Literal[
     "passive_no_target_contact",
@@ -180,6 +182,31 @@ _REGISTRY: dict[str, ToolEntry] = {
         default_risk_band=RiskLevel.LOW,
         is_destructive_capable=False,
         description="HTTP probe — status / title / tech / TLS metadata.",
+    ),
+    "katana": ToolEntry(
+        slug="katana",
+        adapter_cls=KatanaAdapter,
+        docker_image="osa-agent-katana:latest",
+        tier="active_recon",
+        capabilities=("crawl", "endpoint_discovery", "spider"),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="Web crawler — maps the app's URL/endpoint surface for scanners.",
+    ),
+    "zap": ToolEntry(
+        slug="zap",
+        adapter_cls=ZapAdapter,
+        docker_image="osa-agent-zap:latest",
+        tier="active_recon",
+        capabilities=(
+            "web_vulnerability_scan", "passive_scan", "spider",
+            "misconfiguration_detection",
+        ),
+        applicable_domain_tags=frozenset({"web", "api"}),
+        default_risk_band=RiskLevel.MEDIUM,
+        is_destructive_capable=False,
+        description="OWASP ZAP baseline DAST — spider + passive vulnerability scan.",
     ),
     "cloudenum": ToolEntry(
         slug="cloudenum",

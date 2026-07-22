@@ -30,6 +30,8 @@ declare -A AGENT_IMAGES=(
     ["osa-agent-httpx"]="docker/agents/Dockerfile.httpx"
     ["osa-agent-cloudenum"]="docker/agents/Dockerfile.cloudenum"
     ["osa-agent-wappalyzer"]="docker/agents/Dockerfile.wappalyzer"
+    ["osa-agent-katana"]="docker/agents/Dockerfile.katana"
+    ["osa-agent-zap"]="docker/agents/Dockerfile.zap"
 )
 
 for name in "${!AGENT_IMAGES[@]}"; do

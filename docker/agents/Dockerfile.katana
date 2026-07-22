@@ -1,0 +1,5 @@
+# katana — ProjectDiscovery web crawler / endpoint discovery.
+# Tier=active_recon (crawling contacts the target). The adapter emits ARGS only
+# (KatanaAdapter.build_command); JSONL findings stream to stdout.
+FROM projectdiscovery/katana:latest
+ENTRYPOINT ["katana"]
