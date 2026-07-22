@@ -118,6 +118,16 @@ class TestNucleiAdapter:
         cmd = self.adapter.build_command(target, config)
         assert "example.com" in " ".join(cmd) or "example.com" in cmd
 
+    def test_build_command_streams_findings_to_stdout_not_a_file(self):
+        # Regression (session 9a7d4563): findings must go to STDOUT (-jsonl) which
+        # parse_output reads. The prior `-json-export <file>` + `-silent` wrote to a
+        # container file the adapter never read → 0 findings even when nuclei matched.
+        cmd = self.adapter.build_command({"ip_ranges": [], "domains": ["example.com"]}, {})
+        assert "-jsonl" in cmd
+        assert "-json-export" not in cmd
+        # bounded so a filtered host can't stretch the scan into hours
+        assert "-timeout" in cmd and "-rate-limit" in cmd
+
     def test_parse_output_empty_is_success_no_findings(self):
         result = self.adapter.parse_output("")
         assert result.success is True

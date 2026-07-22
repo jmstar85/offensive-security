@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     container_memory_limit: str = "512m"
     container_cpu_limit: float = 1.0
     container_pids_limit: int = 100
+    # Hard wall-clock ceiling per tool-container step. Without it a slow/hung tool
+    # (e.g. a full-template nuclei scan against a filtered host) blocks the whole
+    # sequential run indefinitely — the run looks "stuck" (session 9a7d4563). On
+    # timeout the container is stopped, the step is marked failed, and the run
+    # continues. Per-step override via step config["timeout_secs"].
+    agent_execution_timeout_secs: int = 420
     metasploit_memory_limit: str = "2g"
     metasploit_cpu_limit: float = 2.0
 

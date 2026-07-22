@@ -30,14 +30,23 @@ class NucleiAdapter(AgentAdapter):
         targets = filter_resolvable_targets(raw)
         target_str = ",".join(targets)
         severity = config.get("severity", "low,medium,high,critical")
-        # JSON-lines output for easy parsing; exclude critical destructive templates
+        # `-jsonl` streams each finding as a JSON line to STDOUT, which is what
+        # parse_output() consumes. The prior `-json-export <file>` wrote results to
+        # a file INSIDE the container that was never read back, and `-silent`
+        # suppressed stdout, so nuclei reported 0 findings even when it matched
+        # (session 9a7d4563). `-timeout`/`-retries`/`-rate-limit` bound the runtime
+        # so a filtered/slow host can't stretch the ~7k-template scan into hours
+        # (the per-step execution timeout is the hard backstop).
         # The image ENTRYPOINT is `nuclei`, so emit ARGS ONLY (no leading "nuclei").
         return [
             "-u", target_str,
+            "-jsonl",
+            "-silent",
             "-severity", severity,
             "-exclude-tags", "dos,fuzz",
-            "-json-export", "/tmp/nuclei_results.json",
-            "-silent",
+            "-timeout", str(config.get("http_timeout", 5)),
+            "-retries", str(config.get("retries", 1)),
+            "-rate-limit", str(config.get("rate_limit", 150)),
         ]
 
     def parse_output(self, raw_output: str) -> AgentResult:

@@ -39,12 +39,14 @@ deterministic lane byte-identical: ``PlanExecutor`` still creates AND finalizes 
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.agents.kali_whitelist import SafetyViolation
 from app.agents.registry import get_adapter
+from app.core.config import settings
 from app.safety.audit import AuditLogger
 from app.safety.audit_kali import persist_kali_shim_block
 from app.safety.egress_monitor import EgressMonitor
@@ -94,7 +96,15 @@ async def execute_tool_through_safety_chain(
     seen_container_id = False
     step_findings: list[dict] = []
 
-    try:
+    # Per-step wall-clock ceiling. A tool that streams no output and never exits
+    # (e.g. a full-template nuclei scan against a filtered host) would otherwise
+    # block this ``async for`` forever and hang the whole sequential run
+    # (session 9a7d4563). On timeout we stop the container and surface an error so
+    # the caller finalizes the step failed and moves on.
+    timeout_secs = config.get("timeout_secs") or settings.agent_execution_timeout_secs
+
+    async def _drain() -> None:
+        nonlocal seen_container_id, step_findings
         async for event in adapter.execute(target, config, container_id_holder):
             # Register container id (once) so the kill switch can find a live
             # container mid-run; the caller writes it onto the AgentExecution row.
@@ -110,7 +120,7 @@ async def execute_tool_through_safety_chain(
                 safe = await egress_monitor.monitor_log_line(line, actor_id)
                 if not safe:
                     result.killed = True
-                    return result
+                    return
 
             if on_event is not None:
                 await on_event(event)
@@ -118,6 +128,21 @@ async def execute_tool_through_safety_chain(
             if event.event_type == "status" and "result" in event.data:
                 step_findings = event.data["result"].get("findings", [])
 
+    try:
+        await asyncio.wait_for(_drain(), timeout=timeout_secs)
+        if result.killed:
+            return result
+    except asyncio.TimeoutError:
+        # Stop the runaway container so it does not keep burning host resources
+        # after we abandon the step. cleanup() also runs via the cancelled
+        # adapter.execute finally-block; stopping first is belt-and-suspenders.
+        if container_id_holder:
+            try:
+                await adapter.stop(container_id_holder[0])
+            except Exception:  # noqa: BLE001 — best-effort; never mask the timeout
+                pass
+        result.error = f"execution timed out after {timeout_secs}s"
+        return result
     except SafetyViolation as exc:
         # WhitelistShim rejected the (slug, args) pair at build_command time.
         # Persist the per-step shim-block audit row (kali-scoped) so operators see
