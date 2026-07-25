@@ -44,6 +44,13 @@ class NucleiAdapter(AgentAdapter):
             "-silent",
             "-severity", severity,
             "-exclude-tags", "dos,fuzz",
+            # Keep nuclei IN-SCOPE: -no-interactsh disables the external OOB
+            # collaborator (oast.* callbacks) and -disable-update-check disables the
+            # github/projectdiscovery version+template fetch at startup. Both emit
+            # out-of-scope hostnames that the session EgressMonitor treats as an
+            # egress violation and HARD-HALTS the whole run on (verified E2E).
+            "-no-interactsh",
+            "-disable-update-check",
             "-timeout", str(config.get("http_timeout", 5)),
             "-retries", str(config.get("retries", 1)),
             "-rate-limit", str(config.get("rate_limit", 150)),

@@ -5,7 +5,7 @@ SIBLING of DockerBackend (NOT a subclass). Hardening applied here cannot
 accidentally inject into the legacy 9-adapter path (Principle 5).
 
 Hardening contract (A1.2 of the plan, always applied per container start):
-  - security_opt = ["no-new-privileges:true", "seccomp=default"]
+  - security_opt = ["no-new-privileges:true"]  (+ docker's implicit default seccomp)
   - cap_drop     = ["ALL"]
   - cap_add      = ⊆ KALI_ALLOWED_CAPS (frozenset() in v1 → must be [])
   - read_only    = True   (root filesystem read-only)
@@ -37,7 +37,13 @@ from app.safety.kali_allowlist import KALI_ALLOWED_CAPS
 _kali_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="kali-agent")
 
 # Hardening contract constants — defined once so tests can reference them.
-KALI_SECURITY_OPT: list[str] = ["no-new-privileges:true", "seccomp=default"]
+# NOTE: do NOT pass "seccomp=default" — docker interprets any non-"unconfined"
+# seccomp value as a FILE PATH, so "default" makes the daemon try to open a file
+# named "default" and the container START fails 500 ("opening seccomp profile
+# (default) failed"), which broke every real hardened kali run (E2E-verified).
+# Omitting the seccomp opt makes the daemon apply its built-in DEFAULT (restrictive)
+# seccomp profile automatically — the intended hardening, now actually applied.
+KALI_SECURITY_OPT: list[str] = ["no-new-privileges:true"]
 KALI_TMPFS: dict[str, str] = {
     "/tmp": "size=128m,mode=1777",
     "/work": "size=512m,mode=1777",

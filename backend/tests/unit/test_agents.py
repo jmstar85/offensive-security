@@ -127,6 +127,9 @@ class TestNucleiAdapter:
         assert "-json-export" not in cmd
         # bounded so a filtered host can't stretch the scan into hours
         assert "-timeout" in cmd and "-rate-limit" in cmd
+        # in-scope: no external OOB collaborator / update check, or the
+        # EgressMonitor hard-halts the run on out-of-scope hostnames
+        assert "-no-interactsh" in cmd and "-disable-update-check" in cmd
 
     def test_parse_output_empty_is_success_no_findings(self):
         result = self.adapter.parse_output("")
