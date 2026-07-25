@@ -2,5 +2,8 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir cloud-enum==0.7
-ENTRYPOINT ["cloudenum"]
+# The real tool is initstring/cloud_enum (the PyPI `cloud-enum`/`cloud_enum`
+# names are empty squats with no CLI). Install from git; it ships a `cloud_enum`
+# console script that takes -k <keyword> (what CloudEnumAdapter.build_command emits).
+RUN pip install --no-cache-dir git+https://github.com/initstring/cloud_enum.git
+ENTRYPOINT ["cloud_enum"]

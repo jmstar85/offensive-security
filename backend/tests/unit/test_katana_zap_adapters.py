@@ -26,6 +26,8 @@ def test_katana_builds_bounded_crawl_to_stdout():
     assert "-u" in cmd and "https://scanme.nmap.org" in cmd
     assert "-jsonl" in cmd  # findings to stdout
     assert "-d" in cmd and "-timeout" in cmd  # bounded
+    # in-scope crawl only, or the EgressMonitor hard-halts the run on off-site links
+    assert cmd[cmd.index("-fs") + 1] == "fqdn"
 
 
 def test_katana_parses_json_and_plain_urls():

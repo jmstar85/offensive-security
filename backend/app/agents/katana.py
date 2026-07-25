@@ -31,13 +31,17 @@ class KatanaAdapter(AgentAdapter):
         url = config.get("url") or (
             "https://" + hosts[0] if hosts else "https://example.com"
         )
-        # -jsonl → JSON lines to stdout (parse_output reads them). Bounded so a
-        # deep/slow site can't run unbounded (the per-step execution timeout is
-        # the hard backstop). -d depth, -timeout per-request seconds.
+        # -fs fqdn keeps the crawl ON THE TARGET's FQDN. Without it katana follows
+        # off-site links (e.g. scanme.nmap.org → nmap.org/insecure.org), which the
+        # session EgressMonitor sees as out-of-scope traffic and HARD-HALTS the
+        # whole run (verified E2E). Staying in-scope is both correct and safe.
+        # -jsonl → JSON lines to stdout (parse_output reads them). Bounded via
+        # -d depth + -timeout (the per-step execution timeout is the hard backstop).
         return [
             "-u", url,
             "-jsonl",
             "-silent",
+            "-fs", config.get("crawl_scope", "fqdn"),
             "-d", str(config.get("depth", 2)),
             "-timeout", str(config.get("timeout", 10)),
         ]
