@@ -125,7 +125,7 @@ def _compact(result: dict) -> dict:
     return {
         k: result.get(k)
         for k in ("approved", "blocked_reason", "executed", "findings",
-                  "killed", "paused_for_rescope")
+                  "killed", "egress_violation", "paused_for_rescope")
         if k in result
     }
 

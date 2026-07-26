@@ -179,6 +179,34 @@ class PlanExecutor:
             if result.killed:
                 return all_findings  # session killed by egress monitor
 
+            if result.egress_violation is not None:
+                # Step-scope egress: the safety helper already stopped THIS step's
+                # container. Finalize this step failed + CONTINUE — the remaining
+                # in-scope steps still run (one benign off-scope fetch no longer
+                # aborts the whole engagement). Escalation to a full session kill
+                # (exploit-tier / cap) surfaces as result.killed above instead.
+                await self._db.execute(
+                    update(AgentExecution)
+                    .where(AgentExecution.id == exec_id)
+                    .values(
+                        status="failed",
+                        ended_at=datetime.now(timezone.utc),
+                        output_json={
+                            "error": result.egress_violation,
+                            "reason": "egress_violation",
+                        },
+                    )
+                )
+                await event_bus.publish(str(session_id), {
+                    "type": "agent_failed",
+                    "agent": agent_type,
+                    "execution_id": str(exec_id),
+                    "error": result.egress_violation,
+                    "reason": "egress_violation",
+                    "step": {"order": step.get("order", 0), "status": "failed"},
+                }, topic="tasks")
+                continue
+
             if result.safety_violation is not None:
                 # WhitelistShim rejected the (slug, args) pair. The shim-block audit
                 # row was already persisted inside the helper (kali-scoped); here we
@@ -324,6 +352,12 @@ class PlanExecutor:
             if getattr(result, "killed", False):
                 status = "failed"
                 summary = "Halted — egress monitor tripped (out-of-scope traffic blocked)."
+            elif getattr(result, "egress_violation", None):
+                status = "failed"
+                summary = (
+                    f"Halted this step — out-of-scope egress blocked "
+                    f"({result.egress_violation}); continuing remaining in-scope steps."
+                )
             elif getattr(result, "safety_violation", None):
                 status = "failed"
                 summary = f"Blocked by safety policy — {result.safety_violation}"

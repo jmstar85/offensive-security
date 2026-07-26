@@ -651,6 +651,31 @@ class Performer:
             return {"executed": True, "killed": True,
                     "execution_id": str(exec_id), "findings": []}
 
+        if result.egress_violation is not None:
+            # Step-scope egress: this tool's container was already stopped; fail
+            # the dispatch (the pentester loop surfaces it + halts at the cap) but
+            # do not abort the session — escalation to a session kill arrives as
+            # result.killed above (exploit-tier / violation cap).
+            await db.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == exec_id)
+                .values(
+                    status="failed",
+                    ended_at=datetime.now(timezone.utc),
+                    output_json={"error": result.egress_violation, "reason": "egress_violation"},
+                )
+            )
+            await event_bus.publish(str(session_id), {
+                "type": "agent_failed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "error": result.egress_violation,
+                "reason": "egress_violation",
+                "step": {"order": step.get("order", 0), "status": "failed"},
+            }, topic="tasks")
+            return {"executed": True, "egress_violation": result.egress_violation,
+                    "execution_id": str(exec_id), "findings": []}
+
         if result.safety_violation is not None:
             await db.execute(
                 update(AgentExecution)

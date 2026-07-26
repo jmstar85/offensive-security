@@ -217,6 +217,12 @@ class MetricsRegistry:
             "WhitelistShim rejections partitioned by deny reason.",
             ("reason",),
         )
+        self.egress_violation_total = _CounterFacade(
+            "osa_egress_violation_total",
+            "Egress-monitor violations, partitioned by blast-radius scope and "
+            "whether the violation escalated to a full session kill.",
+            ("scope", "escalated"),
+        )
         self.kali_container_start_failures_total = _CounterFacade(
             "osa_kali_container_start_failures_total",
             "KaliBackend.start container creation failures partitioned by reason.",

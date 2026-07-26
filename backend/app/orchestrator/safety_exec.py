@@ -56,16 +56,18 @@ from app.safety.egress_monitor import EgressMonitor
 class SafetyExecResult:
     """Outcome of running one tool step through the runtime brake envelope.
 
-    Exactly one of {success (``error``/``safety_violation``/``killed`` all falsy),
-    ``safety_violation``, ``error``, ``killed``} describes the terminal state. The
-    caller maps it onto its ``AgentExecution`` row + topic publishes.
+    Exactly one of {success (all of ``error``/``safety_violation``/``killed``/
+    ``egress_violation`` falsy), ``safety_violation``, ``error``, ``killed``,
+    ``egress_violation``} describes the terminal state. The caller maps it onto
+    its ``AgentExecution`` row + topic publishes.
     """
 
     findings: list[dict] = field(default_factory=list)
     container_id: str | None = None
-    killed: bool = False                  # egress monitor tripped → session killed
+    killed: bool = False                  # egress monitor tripped → SESSION killed
     safety_violation: str | None = None   # WhitelistShim rejection → row reason=shim_block
     error: str | None = None              # generic adapter failure → row failed
+    egress_violation: str | None = None   # step-scope egress → THIS container stopped, run continues
 
 
 async def execute_tool_through_safety_chain(
@@ -114,12 +116,30 @@ async def execute_tool_through_safety_chain(
                 if on_container_id is not None:
                     await on_container_id(container_id_holder[0])
 
-            # Egress brake on log lines.
+            # Egress brake on log lines. The monitor decides the blast radius
+            # (single-sourced): kill_session (legacy/exploit-tier/cap) vs stop_step.
             if event.event_type == "log":
                 line = event.data.get("line", "")
-                safe = await egress_monitor.monitor_log_line(line, actor_id)
-                if not safe:
-                    result.killed = True
+                verdict = await egress_monitor.monitor_log_line(
+                    line, actor_id, tier=step.get("tier")
+                )
+                if not verdict.safe:
+                    if verdict.action == "kill_session":
+                        result.killed = True
+                        return
+                    # Step scope — FAIL CLOSED: set the egress signal FIRST (before
+                    # any await), then stop ONLY this step's container. The inner
+                    # try/except + empty-holder guard are mandatory: a raising
+                    # adapter.stop must NOT reach the generic ``except Exception``
+                    # below (which would set result.error and erase the egress
+                    # semantics). The generator's finally cleanup(force=True)
+                    # force-removes the container as belt-and-suspenders.
+                    result.egress_violation = verdict.dest or "out-of-scope egress"
+                    if container_id_holder:
+                        try:
+                            await adapter.stop(container_id_holder[0])
+                        except Exception:  # noqa: BLE001 — best-effort; never mask
+                            pass
                     return
 
             if on_event is not None:
@@ -131,6 +151,8 @@ async def execute_tool_through_safety_chain(
     try:
         await asyncio.wait_for(_drain(), timeout=timeout_secs)
         if result.killed:
+            return result
+        if result.egress_violation is not None:
             return result
     except asyncio.TimeoutError:
         # Stop the runaway container so it does not keep burning host resources

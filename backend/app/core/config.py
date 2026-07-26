@@ -252,6 +252,28 @@ class Settings(BaseSettings):
     # adapted (unknown agent slug). Tier/scope gates still govern on both lanes.
     osa_promote_interview_plan_enabled: bool = True
 
+    # Egress-violation blast radius (safety-reviewed). "session" (DEFAULT,
+    # fail-safe / legacy strict): a tool's out-of-scope connection kills the whole
+    # session. "step": kill only the offending tool's container + fail that step,
+    # then continue the remaining IN-SCOPE steps — an explicit operator opt-in
+    # (e.g. the autonomous E2E lane) so one benign off-scope fetch (katana/nuclei)
+    # doesn't abort a whole engagement. Regardless of scope, an egress violation
+    # from an active_exploit-tier step ALWAYS session-kills, and after
+    # osa_egress_violation_cap violations the session is killed anyway (a
+    # re-tripping tool cannot manufacture N out-of-scope connections across N steps).
+    osa_egress_violation_scope: str = "session"
+    osa_egress_violation_cap: int = 3
+
+    @field_validator("osa_egress_violation_scope")
+    @classmethod
+    def _validate_egress_scope(cls, v: str) -> str:
+        # Fail fast at startup so a typo can never silently select a branch.
+        if v not in {"step", "session"}:
+            raise ValueError(
+                f"osa_egress_violation_scope must be 'step' or 'session', got {v!r}"
+            )
+        return v
+
     # Sidecar feature flags (W3) — UI gating only, sidecars are managed by
     # docker-compose and IMAGE_REGEX, not by these booleans
     osa_mitm_proxy_enabled: bool = False

@@ -25,7 +25,7 @@ async def test_egress_extended_ipv4_verb_catches_offscope():
     mon = EgressMonitor(uuid.uuid4(), {"ip_ranges": ["45.33.32.0/24"]})
     with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock) as kill:
         safe = await mon.monitor_log_line("connect() to 8.8.8.8:443", "a")
-    assert safe is False
+    assert safe.safe is False
     kill.assert_awaited_once()
 
 
@@ -33,7 +33,7 @@ async def test_egress_catches_ipv6_offscope():
     mon = EgressMonitor(uuid.uuid4(), {"ip_ranges": ["45.33.32.0/24"]})
     with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock) as kill:
         safe = await mon.monitor_log_line("Connecting to [2001:4860:4860::8888]", "a")
-    assert safe is False
+    assert safe.safe is False
     kill.assert_awaited_once()
 
 
@@ -41,15 +41,15 @@ async def test_egress_catches_offscope_host_via_sni():
     mon = EgressMonitor(uuid.uuid4(), {"domains": ["scanme.nmap.org"]})
     with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock) as kill:
         safe = await mon.monitor_log_line("TLS handshake SNI=evil.example.com", "a")
-    assert safe is False
+    assert safe.safe is False
     kill.assert_awaited_once()
 
 
 async def test_egress_allows_inscope_host_and_subdomain():
     mon = EgressMonitor(uuid.uuid4(), {"domains": ["scanme.nmap.org"]})
     with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock) as kill:
-        assert await mon.monitor_log_line("Host: scanme.nmap.org", "a") is True
-        assert await mon.monitor_log_line("Host: api.scanme.nmap.org", "a") is True
+        assert (await mon.monitor_log_line("Host: scanme.nmap.org", "a")).safe is True
+        assert (await mon.monitor_log_line("Host: api.scanme.nmap.org", "a")).safe is True
     kill.assert_not_awaited()
 
 
@@ -57,7 +57,7 @@ async def test_egress_no_domain_scope_does_not_flag_hosts():
     """Without a domain scope we cannot judge a hostname → no false-positive kill."""
     mon = EgressMonitor(uuid.uuid4(), {"ip_ranges": []})
     with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock) as kill:
-        assert await mon.monitor_log_line("Host: anything.example.com", "a") is True
+        assert (await mon.monitor_log_line("Host: anything.example.com", "a")).safe is True
     kill.assert_not_awaited()
 
 

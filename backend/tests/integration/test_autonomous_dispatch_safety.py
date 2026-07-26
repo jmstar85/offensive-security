@@ -65,6 +65,9 @@ def _fake_adapter(agent_type: str, *, findings=None, log_line="benign output",
             yield AgentEvent("status", agent_type, "x",
                              {"status": "completed", "result": {"findings": findings}})
 
+        async def stop(self, container_id):  # step-scope egress stops this container
+            self.stopped = container_id
+
     return _A()
 
 
@@ -137,11 +140,14 @@ async def test_autonomous_dispatch_runs_filter_trio_per_dispatch():
 # ── runtime envelope brakes ──────────────────────────────────────────────────
 
 async def test_egress_kill_fires_on_autonomous_path():
-    """A poisoned log line trips the session-scoped EgressMonitor → killed."""
+    """Session scope (default): a poisoned log line trips the EgressMonitor →
+    the whole session is killed."""
+    from app.safety.egress_monitor import EgressVerdict
+
     p = _bound_performer(_mock_db(), approval_flags={"approved_active_recon": True})
 
-    async def _unsafe(self, line, actor_id):  # noqa: ANN001
-        return False  # egress violation
+    async def _unsafe(self, line, actor_id, tier=None):  # noqa: ANN001
+        return EgressVerdict(safe=False, dest="9.9.9.9", action="kill_session")
 
     with patch("app.orchestrator.safety_exec.get_adapter",
                return_value=_fake_adapter("nmap", log_line="Connecting to 9.9.9.9")), \
@@ -149,6 +155,28 @@ async def test_egress_kill_fires_on_autonomous_path():
         result = await p._dispatch_tool("nmap", {"intent": "port_scan", "config": {}})
 
     assert result.get("killed") is True
+
+
+async def test_egress_step_scope_fails_step_not_session(monkeypatch):
+    """Step scope: a poisoned log line stops only THIS tool's container and fails
+    the dispatch with egress_violation — the session is NOT killed (run continues)."""
+    from app.core.config import settings
+    from app.safety.egress_monitor import EgressVerdict
+
+    monkeypatch.setattr(settings, "osa_egress_violation_scope", "step")
+    p = _bound_performer(_mock_db(), approval_flags={"approved_active_recon": True})
+
+    async def _stop_step(self, line, actor_id, tier=None):  # noqa: ANN001
+        return EgressVerdict(safe=False, dest="9.9.9.9", action="stop_step")
+
+    with patch("app.orchestrator.safety_exec.get_adapter",
+               return_value=_fake_adapter("nmap", log_line="Connecting to 9.9.9.9")), \
+         patch("app.safety.egress_monitor.EgressMonitor.monitor_log_line", _stop_step):
+        result = await p._dispatch_tool("nmap", {"intent": "port_scan", "config": {}})
+
+    assert result.get("killed") is not True
+    assert result.get("egress_violation") == "9.9.9.9"
+    assert result.get("executed") is True
 
 
 async def test_kill_switch_registration_on_autonomous_path():

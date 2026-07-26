@@ -101,9 +101,10 @@ async def test_runtime_envelope_fires_in_spec_order_on_current_executor_path():
         calls.append("adapter.execute")
         return real_execute(target, config, execution_id_out)
 
-    async def _spy_monitor_log_line(self, line, actor_id):  # noqa: ANN001
+    async def _spy_monitor_log_line(self, line, actor_id, tier=None):  # noqa: ANN001
+        from app.safety.egress_monitor import EgressVerdict
         calls.append("egress.monitor_log_line")
-        return True  # safe → execution continues
+        return EgressVerdict(safe=True)  # safe → execution continues
 
     db = _make_db()
     executor = PlanExecutor(db)
