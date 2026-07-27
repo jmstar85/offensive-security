@@ -26,22 +26,33 @@ class DockerBackend(ExecutionBackend):
         network: str | None, resource_limits: dict,
     ) -> str:
         loop = _get_loop()
-        container = await loop.run_in_executor(
-            _thread_pool,
-            lambda: self._client.containers.run(
+
+        def _create_and_start() -> str:
+            # Split create + start (instead of containers.run): on a START failure
+            # (e.g. an OCI/config error) run() raises WITHOUT removing the created
+            # container (remove=False), leaving a "created"-state zombie. Holding
+            # the handle lets us force-remove it before re-raising.
+            container = self._client.containers.create(
                 image=image,
                 command=command,
                 environment=env,
                 network=network,
-                detach=True,
-                remove=False,
                 mem_limit=resource_limits.get("mem_limit", "512m"),
                 cpu_quota=resource_limits.get("cpu_quota", 100000),
                 pids_limit=resource_limits.get("pids_limit", 100),
                 network_disabled=(network is None),
-            ),
-        )
-        return container.id
+            )
+            try:
+                container.start()
+            except Exception:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+                raise
+            return container.id
+
+        return await loop.run_in_executor(_thread_pool, _create_and_start)
 
     async def stream_logs(self, execution_id: str) -> AsyncGenerator[str, None]:
         loop = _get_loop()

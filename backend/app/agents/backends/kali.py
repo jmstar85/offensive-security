@@ -87,15 +87,18 @@ class KaliBackend(ExecutionBackend):
             )
 
         loop = _get_loop()
-        container = await loop.run_in_executor(
-            _kali_thread_pool,
-            lambda: self._client.containers.run(
+
+        def _create_and_start() -> str:
+            # Split create + start (instead of containers.run): a hardening/OCI
+            # START failure (e.g. a misconfigured security_opt) otherwise leaks a
+            # "created"-state zombie because run() raises without a handle to clean
+            # up (remove=False). This is exactly what left osa-kali "created"
+            # containers behind. Holding the handle force-removes it on failure.
+            container = self._client.containers.create(
                 image=image,
                 command=command,
                 environment=env,
                 network=network,
-                detach=True,
-                remove=False,
                 mem_limit=resource_limits.get("mem_limit", "512m"),
                 cpu_quota=resource_limits.get("cpu_quota", 100000),
                 pids_limit=resource_limits.get("pids_limit", 100),
@@ -106,9 +109,18 @@ class KaliBackend(ExecutionBackend):
                 cap_add=cap_add_req,
                 read_only=True,
                 tmpfs=dict(KALI_TMPFS),
-            ),
-        )
-        return container.id
+            )
+            try:
+                container.start()
+            except Exception:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
+                raise
+            return container.id
+
+        return await loop.run_in_executor(_kali_thread_pool, _create_and_start)
 
     async def stream_logs(self, execution_id: str) -> AsyncGenerator[str, None]:
         loop = _get_loop()

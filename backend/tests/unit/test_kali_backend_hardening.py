@@ -2,9 +2,10 @@
 
 Per the consensus plan (ralplan-kali-coexistence-v1.md §A1.2), every
 KaliBackend.start() call MUST pass the following kwargs to docker-py
-`containers.run()`:
+`containers.create()` (start() is called separately so a failed start does not
+leak a "created"-state zombie container):
 
-  - security_opt = ["no-new-privileges:true", "seccomp=default"]
+  - security_opt = ["no-new-privileges:true"]  (+ docker's implicit default seccomp)
   - cap_drop     = ["ALL"]
   - cap_add      = ⊆ KALI_ALLOWED_CAPS   (frozenset() in v1)
   - read_only    = True
@@ -63,9 +64,9 @@ def test_kali_backend_has_isolated_docker_client() -> None:
 def _make_backend_with_mock_client() -> tuple[KaliBackend, MagicMock]:
     with patch("app.agents.backends.kali.docker.DockerClient") as dc:
         client = MagicMock(name="docker-client")
-        # containers.run returns an object with .id
-        run_result = MagicMock(id="container-abc123")
-        client.containers.run.return_value = run_result
+        # containers.create returns a container with .id + a (no-op) .start()
+        created = MagicMock(id="container-abc123")
+        client.containers.create.return_value = created
         dc.return_value = client
         kb = KaliBackend()
     return kb, client
@@ -82,8 +83,8 @@ async def test_start_passes_full_hardening_contract() -> None:
         resource_limits={"mem_limit": "256m", "cpu_quota": 50000, "pids_limit": 80},
     )
     assert exec_id == "container-abc123"
-    client.containers.run.assert_called_once()
-    kwargs = client.containers.run.call_args.kwargs
+    client.containers.create.assert_called_once()
+    kwargs = client.containers.create.call_args.kwargs
     assert kwargs["security_opt"] == KALI_SECURITY_OPT
     assert kwargs["cap_drop"] == ["ALL"]
     assert kwargs["cap_add"] == []  # v1: KALI_ALLOWED_CAPS=frozenset()
@@ -93,8 +94,8 @@ async def test_start_passes_full_hardening_contract() -> None:
     assert kwargs["mem_limit"] == "256m"
     assert kwargs["cpu_quota"] == 50000
     assert kwargs["pids_limit"] == 80
-    assert kwargs["detach"] is True
-    assert kwargs["remove"] is False
+    # create + explicit start (not containers.run) — see the start-failure cleanup test.
+    client.containers.create.return_value.start.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -107,7 +108,7 @@ async def test_start_uses_default_limits_when_unset() -> None:
         network=None,
         resource_limits={},
     )
-    kwargs = client.containers.run.call_args.kwargs
+    kwargs = client.containers.create.call_args.kwargs
     assert kwargs["mem_limit"] == "512m"
     assert kwargs["cpu_quota"] == 100000
     assert kwargs["pids_limit"] == 100
@@ -123,7 +124,7 @@ async def test_start_respects_explicit_network() -> None:
         network="osa_pentest_net",
         resource_limits={},
     )
-    kwargs = client.containers.run.call_args.kwargs
+    kwargs = client.containers.create.call_args.kwargs
     assert kwargs["network"] == "osa_pentest_net"
     assert kwargs["network_disabled"] is False  # network set ⇒ disabled=False
 
@@ -143,7 +144,7 @@ async def test_start_rejects_cap_add_outside_kali_allowed_caps() -> None:
         )
     assert "NET_RAW" in str(excinfo.value)
     assert "KALI_ALLOWED_CAPS" in str(excinfo.value)
-    client.containers.run.assert_not_called()
+    client.containers.create.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -157,7 +158,7 @@ async def test_start_allows_empty_cap_add() -> None:
         resource_limits={"cap_add": []},
     )
     assert exec_id == "container-abc123"
-    kwargs = client.containers.run.call_args.kwargs
+    kwargs = client.containers.create.call_args.kwargs
     assert kwargs["cap_add"] == []
 
 
@@ -189,3 +190,64 @@ async def test_stop_calls_container_stop_with_timeout() -> None:
     client.containers.get.return_value = container
     await kb.stop("container-abc123")
     container.stop.assert_called_once_with(timeout=5)
+
+
+# ------------------------------------------------ start-failure cleanup (no zombie)
+
+
+@pytest.mark.asyncio
+async def test_start_failure_removes_created_container_no_zombie() -> None:
+    """A START failure (e.g. the misconfigured `seccomp=default` OCI error that
+    left osa-kali 'created' zombies) must force-remove the CREATED container and
+    re-raise — not leak a lingering 'created'-state container."""
+    from docker.errors import APIError
+
+    kb, client = _make_backend_with_mock_client()
+    created = client.containers.create.return_value
+    created.start.side_effect = APIError("Decoding seccomp profile failed")
+
+    with pytest.raises(APIError):
+        await kb.start(
+            image="osa-kali:latest", command=["nikto", "-h", "http://x/"],
+            env={}, network=None, resource_limits={},
+        )
+    created.remove.assert_called_once_with(force=True)
+
+
+@pytest.mark.asyncio
+async def test_start_failure_swallows_cleanup_error_but_reraises_original() -> None:
+    """If the cleanup remove() itself fails, the ORIGINAL start error still
+    propagates (the cleanup must never mask the real failure)."""
+    from docker.errors import APIError
+
+    kb, client = _make_backend_with_mock_client()
+    created = client.containers.create.return_value
+    created.start.side_effect = APIError("oci start boom")
+    created.remove.side_effect = RuntimeError("remove also broke")
+
+    with pytest.raises(APIError, match="oci start boom"):
+        await kb.start(
+            image="osa-kali:latest", command=["nikto"],
+            env={}, network=None, resource_limits={},
+        )
+
+
+@pytest.mark.asyncio
+async def test_docker_backend_start_failure_removes_created_container() -> None:
+    """DockerBackend (legacy path) also force-removes a container whose start fails."""
+    from docker.errors import APIError
+
+    with patch("docker.from_env") as from_env:
+        client = MagicMock(name="docker-client")
+        created = MagicMock(id="c1")
+        created.start.side_effect = APIError("start boom")
+        client.containers.create.return_value = created
+        from_env.return_value = client
+        db = DockerBackend()
+
+    with pytest.raises(APIError):
+        await db.start(
+            image="osa-agent-nmap:latest", command=["-sV"],
+            env={}, network="bridge", resource_limits={},
+        )
+    created.remove.assert_called_once_with(force=True)
