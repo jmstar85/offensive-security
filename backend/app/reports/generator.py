@@ -21,13 +21,14 @@ class ReportGenerator:
         session_id: uuid.UUID,
         findings: list[dict],
         plan: dict,
+        aborted: bool = False,
     ) -> Report:
         # PR8: evidence-tag every finding (provenance, not a success verdict). Done
         # at report time only — agent_execution.output_json stays byte-identical.
         findings = tag_all(findings)
         severity_counts = Counter(f.get("severity", "info") for f in findings)
         risk_score = self._calculate_risk_score(findings)
-        summary = self._build_summary(findings, severity_counts, plan)
+        summary = self._build_summary(findings, severity_counts, plan, aborted=aborted)
 
         report = Report(
             session_id=session_id,
@@ -60,16 +61,30 @@ class ReportGenerator:
         return round(max(scores), 1)
 
     def _build_summary(
-        self, findings: list[dict], severity_counts: Counter, plan: dict
+        self, findings: list[dict], severity_counts: Counter, plan: dict,
+        aborted: bool = False,
     ) -> str:
         total = len(findings)
+        # A safety-aborted run is NOT a clean assessment: neither "completed" nor
+        # "no vulnerabilities detected" is true — the plan stopped early, so the
+        # absence of findings only means the remaining steps never ran.
+        prefix = (
+            "Assessment HALTED by the safety monitor (out-of-scope egress blocked) "
+            "before all planned steps ran — results are PARTIAL. "
+            if aborted else ""
+        )
         if total == 0:
-            return "No vulnerabilities or findings detected during this assessment."
+            return prefix + (
+                "No findings were recorded before the halt."
+                if aborted
+                else "No vulnerabilities or findings detected during this assessment."
+            )
         critical = severity_counts.get("critical", 0)
         high = severity_counts.get("high", 0)
         medium = severity_counts.get("medium", 0)
+        headline = "Penetration test halted early." if aborted else "Penetration test completed."
         return (
-            f"Penetration test completed. Found {total} findings: "
+            f"{prefix}{headline} Found {total} findings: "
             f"{critical} critical, {high} high, {medium} medium. "
             f"Overall risk score: {self._calculate_risk_score(findings)}/10. "
             f"Agents used: {', '.join(set(f.get('agent_type', 'unknown') for f in findings if f.get('agent_type')))}."

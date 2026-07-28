@@ -51,6 +51,12 @@ class PlanExecutor:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._audit = AuditLogger(db)
+        # Set True when a step tripped a SESSION-level safety kill (egress monitor
+        # session scope, active_exploit-tier egress, or violation-cap escalation).
+        # The caller (OrchestratorService.run) reads this to finalize the session
+        # as ``killed`` instead of silently marking it ``completed`` — a safety
+        # abort is not a successful engagement.
+        self.killed: bool = False
 
     async def execute(
         self,
@@ -177,7 +183,35 @@ class PlanExecutor:
             await self._narrate_step(session_id, step, config, execution.started_at, result)
 
             if result.killed:
-                return all_findings  # session killed by egress monitor
+                # Session killed by the safety monitor mid-plan. Finalize THIS
+                # in-flight row first — every other terminal branch below closes
+                # its row, and skipping it here left the step stuck at
+                # status='running'/ended_at=NULL forever (orphaned execution:
+                # container long gone, row never closed — session aca3ad5f). Then
+                # flag the abort so the caller marks the session ``killed`` rather
+                # than ``completed``.
+                await self._db.execute(
+                    update(AgentExecution)
+                    .where(AgentExecution.id == exec_id)
+                    .values(
+                        status="failed",
+                        ended_at=datetime.now(timezone.utc),
+                        output_json={
+                            "error": result.egress_violation or "session killed by safety monitor",
+                            "reason": "session_killed",
+                        },
+                    )
+                )
+                await event_bus.publish(str(session_id), {
+                    "type": "agent_failed",
+                    "agent": agent_type,
+                    "execution_id": str(exec_id),
+                    "error": result.egress_violation or "session killed by safety monitor",
+                    "reason": "session_killed",
+                    "step": {"order": step.get("order", 0), "status": "failed"},
+                }, topic="tasks")
+                self.killed = True
+                return all_findings  # session killed by egress monitor — abort remaining steps
 
             if result.egress_violation is not None:
                 # Step-scope egress: the safety helper already stopped THIS step's

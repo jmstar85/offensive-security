@@ -200,6 +200,30 @@ class TestReportGeneratorIntegration:
         assert report.risk_score == 0.0
         assert "No vulnerabilities" in report.summary
 
+    @pytest.mark.asyncio
+    async def test_generate_report_aborted_does_not_claim_completed(self):
+        """A safety-aborted run must not read as a clean 'test completed' — the
+        summary flags PARTIAL results whether or not findings were recorded
+        (session aca3ad5f regression)."""
+        from app.reports.generator import ReportGenerator
+
+        mock_db = MagicMock()
+        mock_db.add = MagicMock()
+        mock_db.flush = AsyncMock()
+        gen = ReportGenerator(mock_db)
+
+        # no findings before the halt
+        r0 = await gen.generate(uuid.uuid4(), [], {"steps": []}, aborted=True)
+        assert "HALTED" in r0.summary and "PARTIAL" in r0.summary
+        assert "No vulnerabilities or findings detected" not in r0.summary
+
+        # partial findings before the halt
+        r1 = await gen.generate(
+            uuid.uuid4(), [{"severity": "info", "type": "open_port"}],
+            {"steps": []}, aborted=True)
+        assert "HALTED" in r1.summary and "halted early" in r1.summary
+        assert "test completed" not in r1.summary.lower()
+
 
 # ── Event bus integration ─────────────────────────────────────────────────────
 

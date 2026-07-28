@@ -157,6 +157,41 @@ async def test_safety_exec_step_egress_fail_closed_when_stop_raises(db, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_safety_exec_session_kill_stops_container_inline(db, monkeypatch):
+    """Session scope: a session-kill verdict stops the offending container INLINE
+    (symmetric with the step-scope + timeout arms). KillSwitch runs in its own db
+    session and cannot see the still-uncommitted AgentExecution row, so without the
+    inline stop the out-of-scope container would keep streaming after the kill."""
+    monkeypatch.setattr(settings, "osa_egress_violation_scope", "session")
+    stopped: list[str] = []
+
+    class _A:
+        agent_type = "nmap"
+
+        async def execute(self, target, config, holder=None):
+            if holder is not None:
+                holder.append("cid-kill")
+            yield AgentEvent("status", "nmap", "cid-kill", {"status": "running"})
+            yield AgentEvent("log", "nmap", "cid-kill", {"line": OFFSCOPE})
+            yield AgentEvent("status", "nmap", "cid-kill",
+                             {"status": "completed", "result": {"findings": []}})
+
+        async def stop(self, cid):
+            stopped.append(cid)
+
+    monkeypatch.setattr(se, "get_adapter", lambda slug: _A())
+    with patch.object(EgressMonitor, "_trigger_kill", new_callable=AsyncMock):
+        mon = EgressMonitor(uuid.uuid4(), WL)
+        result = await execute_tool_through_safety_chain(
+            {"agent": "nmap", "config": {}, "tier": "active_recon"}, WL,
+            egress_monitor=mon, audit=AuditLogger(db),
+            session_id=uuid.uuid4(), actor_id="a")
+
+    assert result.killed is True
+    assert stopped == ["cid-kill"]  # offending container stopped INLINE on the kill
+
+
+@pytest.mark.asyncio
 async def test_safety_exec_step_egress_fail_closed_when_holder_empty(db, monkeypatch):
     monkeypatch.setattr(settings, "osa_egress_violation_scope", "step")
     monkeypatch.setattr(settings, "osa_egress_violation_cap", 99)
@@ -219,8 +254,20 @@ async def test_executor_session_kill_aborts_remaining_steps(db, monkeypatch):
         {"id": "s1", "order": 1, "agent": "nmap", "action": "port_scan", "config": {}, "tier": "active_recon"},
         {"id": "s2", "order": 2, "agent": "httpx", "action": "http", "config": {}, "tier": "passive_low_touch"},
     ]
-    await PlanExecutor(db).execute(sid, steps, WL, WL, "actor")
+    ex = PlanExecutor(db)
+    await ex.execute(sid, steps, WL, WL, "actor")
     assert calls == ["nmap"]  # session kill aborted before step 2
+    # The kill is signalled up to the caller so the session is finalized ``killed``,
+    # not silently ``completed`` (session aca3ad5f regression).
+    assert ex.killed is True
+    # The in-flight nmap row is FINALIZED, not left orphaned at status='running'
+    # with ended_at=NULL (the aca3ad5f orphaned-execution bug).
+    rows = {r.agent_type: r for r in (await db.execute(
+        select(AgentExecution).where(AgentExecution.session_id == sid))).scalars().all()}
+    assert rows["nmap"].status == "failed"
+    assert rows["nmap"].ended_at is not None
+    assert rows["nmap"].output_json["reason"] == "session_killed"
+    assert "httpx" not in rows  # step 2 row was never created
 
 
 # ── narration arm ────────────────────────────────────────────────────────────

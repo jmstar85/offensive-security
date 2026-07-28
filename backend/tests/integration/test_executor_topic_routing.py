@@ -53,10 +53,11 @@ def _publish_sites() -> list[str]:
 
 def test_executor_has_seven_publish_sites():
     # 6 original + the per-step Agents-tab narration event (msgchain_updated,
-    # topic="agents") added by _narrate_step.
+    # topic="agents") added by _narrate_step + the session_killed agent_failed
+    # event (topic="tasks") that finalizes the in-flight row on a safety abort.
     sites = _publish_sites()
-    assert len(sites) == 8, (
-        f"Expected 8 publish sites in executor.py; found {len(sites)}. "
+    assert len(sites) == 9, (
+        f"Expected 9 publish sites in executor.py; found {len(sites)}. "
         "If you added or removed one, update this regression test."
     )
 
@@ -78,8 +79,9 @@ def test_agent_lifecycle_events_route_to_tasks_topic():
         if any(t in b for t in ('"agent_started"', '"agent_failed"', '"agent_completed"'))
     ]
     # v1.1-#1 added a second `agent_failed` site for the SafetyViolation
-    # (shim_block) branch — both still route to the Tasks tab.
-    assert len(lifecycle) == 5, "Expected 5 lifecycle publish sites (incl. 3 agent_failed: shim / generic / egress_violation)"
+    # (shim_block) branch — both still route to the Tasks tab. The session_killed
+    # branch adds a 4th agent_failed (finalizes the in-flight row on a safety abort).
+    assert len(lifecycle) == 6, "Expected 6 lifecycle publish sites (incl. 4 agent_failed: shim / generic / egress_violation / session_killed)"
     for body in lifecycle:
         assert 'topic="tasks"' in body, (
             f"Lifecycle event must route to Tasks tab; got: {body[:160]!r}"

@@ -90,6 +90,12 @@ class PerformerSession:
     actor_id: str | None = None
     egress_monitor: Any | None = None
     findings: list[dict] = field(default_factory=list)
+    # Set True when a dispatch tripped a SESSION-level safety kill (egress monitor
+    # escalation — KillSwitch stopped every container + marked the session killed).
+    # ``_run_autonomous_lane`` reads this so ``OrchestratorService.run`` finalizes
+    # the session ``killed`` instead of overwriting it back to ``completed`` (the
+    # autonomous-lane twin of the deterministic PlanExecutor.killed signal).
+    killed: bool = False
     # PR7: nested sub-role launch depth. Incremented/decremented by
     # ``delegate_tool_call``'s ROLE_REGISTRY branch (only reachable when a trusted
     # automation caller passes ``allow_role_invocation=True``) so a role that
@@ -560,6 +566,15 @@ class Performer:
         from app.orchestrator.terminal_sink import TerminalLineSink
         from app.safety.audit import AuditLogger
 
+        # Fail-closed chokepoint: once the session has been hard-killed by the
+        # safety monitor, NEVER launch another container — not from the current
+        # role loop, a nested sub-role, or a family-fanout member. This is the
+        # single container-launch site, so guarding its entry makes the whole
+        # autonomous lane fail-closed on state.killed regardless of caller.
+        if self.state.killed:
+            return {"executed": False, "killed": True,
+                    "blocked_reason": "session_killed", "findings": []}
+
         db = self.state.db
         session_id = self.state.session_id
         actor_id = self.state.actor_id or ""
@@ -648,6 +663,34 @@ class Performer:
         await terminal_sink.flush()
 
         if result.killed:
+            # Session hard-killed by the safety monitor (KillSwitch stopped every
+            # container + marked the session killed in ITS OWN db session). Finalize
+            # THIS in-flight row in the MAIN session too — otherwise it stays
+            # status='running'/ended_at=NULL and the main session's later commit
+            # overwrites KillSwitch's 'killed' with the stale 'running' (the
+            # deterministic lane's orphaned-execution bug, autonomous-lane twin).
+            # Then flag the session-level kill so run() finalizes it ``killed``.
+            await db.execute(
+                update(AgentExecution)
+                .where(AgentExecution.id == exec_id)
+                .values(
+                    status="failed",
+                    ended_at=datetime.now(timezone.utc),
+                    output_json={
+                        "error": result.egress_violation or "session killed by safety monitor",
+                        "reason": "session_killed",
+                    },
+                )
+            )
+            await event_bus.publish(str(session_id), {
+                "type": "agent_failed",
+                "agent": agent_type,
+                "execution_id": str(exec_id),
+                "error": result.egress_violation or "session killed by safety monitor",
+                "reason": "session_killed",
+                "step": {"order": step.get("order", 0), "status": "failed"},
+            }, topic="tasks")
+            self.state.killed = True
             return {"executed": True, "killed": True,
                     "execution_id": str(exec_id), "findings": []}
 

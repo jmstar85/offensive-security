@@ -126,6 +126,18 @@ async def execute_tool_through_safety_chain(
                 if not verdict.safe:
                     if verdict.action == "kill_session":
                         result.killed = True
+                        # Stop the offending container INLINE (mirrors the step-scope
+                        # and timeout arms). KillSwitch.stop_session runs in its OWN
+                        # db session and queries AgentExecution rows that are only
+                        # flush()ed (not committed) here, so it cannot see — and thus
+                        # cannot stop — this in-flight container; the adapter.execute
+                        # finally-cleanup is non-deterministic. Stop it directly so an
+                        # out-of-scope container is not left streaming after the kill.
+                        if container_id_holder:
+                            try:
+                                await adapter.stop(container_id_holder[0])
+                            except Exception:  # noqa: BLE001 — best-effort; never mask the kill
+                                pass
                         return
                     # Step scope — FAIL CLOSED: set the egress signal FIRST (before
                     # any await), then stop ONLY this step's container. The inner

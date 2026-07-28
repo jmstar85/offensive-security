@@ -358,55 +358,97 @@ class OrchestratorService:
         # on the fresh-plan lane. Saved-workflow REPLAY always uses the deterministic
         # PlanExecutor (re-runs the exact saved steps) so byte-identical replay holds
         # even when the autonomous flag is ON (PR10 default-flip precondition).
-        if autonomous_lane:
-            findings = await self._run_autonomous_lane(
-                session_id=session_id,
-                session=session,
-                prompt=prompt,
-                steps=approved_steps,
-                target=target,
-                whitelist_rules=whitelist_rules,
-                approval_flags=session.approval_flags or {},
-                actor_id=str(actor_id),
+        #
+        # ``session_killed`` — the run was aborted mid-plan by a SESSION-level safety
+        # kill (egress monitor). ``abort_reason`` — a NON-kill failure (role error /
+        # concurrency gate) that also must not read as a clean engagement. Neither may
+        # be reported as a rosy ``completed`` with a 0-findings / risk-0 report
+        # (session aca3ad5f: katana tripped the egress monitor at step 3/8, steps 4-8
+        # never ran, yet the session was marked completed with a reassuring report).
+        session_killed = False
+        abort_reason: str | None = None
+        # Guard the whole execute→finalize span: an escaping exception (DB/serialization
+        # error in the lane, _load_understanding, or the report flush) must leave a
+        # TERMINAL status, never strand the session at 'running' forever.
+        try:
+            if autonomous_lane:
+                findings, session_killed, abort_reason = await self._run_autonomous_lane(
+                    session_id=session_id,
+                    session=session,
+                    prompt=prompt,
+                    steps=approved_steps,
+                    target=target,
+                    whitelist_rules=whitelist_rules,
+                    approval_flags=session.approval_flags or {},
+                    actor_id=str(actor_id),
+                )
+            else:
+                executor = PlanExecutor(self._db)
+                findings = await executor.execute(
+                    session_id=session_id,
+                    steps=approved_steps,
+                    target=target,
+                    whitelist_rules=whitelist_rules,
+                    actor_id=str(actor_id),
+                )
+                session_killed = executor.killed
+            await self._db.commit()
+
+            # Terminal disposition: killed (safety abort) | failed (non-kill abort) |
+            # completed (clean). ``aborted`` drives the report summary to say PARTIAL /
+            # halted instead of a clean "test completed".
+            if session_killed:
+                final_status = "killed"
+            elif abort_reason:
+                final_status = "failed"
+            else:
+                final_status = "completed"
+            aborted = session_killed or abort_reason is not None
+
+            # 10. Generate report (partial findings are still real — keep them — but the
+            # summary must say the assessment was halted/incomplete, not completed).
+            generator = ReportGenerator(self._db)
+            await generator.generate(session_id, findings, plan, aborted=aborted)
+            await self._db.commit()
+
+            # 11. Finalize the session. A safety kill lands as ``killed`` (the terminal
+            # state RescopeService/KillSwitch already use); a non-kill abort as ``failed``.
+            await self._db.execute(
+                update(PentestSession)
+                .where(PentestSession.id == session_id)
+                .values(status=final_status, ended_at=datetime.now(timezone.utc))
             )
-        else:
-            executor = PlanExecutor(self._db)
-            findings = await executor.execute(
-                session_id=session_id,
-                steps=approved_steps,
-                target=target,
-                whitelist_rules=whitelist_rules,
+            await self._db.commit()
+
+            await self._audit.log(
+                action=("session_killed" if session_killed
+                        else "session_failed" if abort_reason
+                        else "session_completed"),
                 actor_id=str(actor_id),
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"finding_count": len(findings), "aborted": aborted,
+                         "abort_reason": abort_reason},
             )
-        await self._db.commit()
+            await self._db.commit()
 
-        # 10. Generate report
-        generator = ReportGenerator(self._db)
-        await generator.generate(session_id, findings, plan)
-        await self._db.commit()
-
-        # 11. Mark session completed
-        await self._db.execute(
-            update(PentestSession)
-            .where(PentestSession.id == session_id)
-            .values(status="completed", ended_at=datetime.now(timezone.utc))
-        )
-        await self._db.commit()
-
-        await self._audit.log(
-            action="session_completed",
-            actor_id=str(actor_id),
-            target_entity="pentest_session",
-            target_id=str(session_id),
-            details={"finding_count": len(findings)},
-        )
-        await self._db.commit()
-
-        await event_bus.publish(str(session_id), {
-            "type": "session_update",
-            "status": "completed",
-            "finding_count": len(findings),
-        })
+            if session_killed:
+                _msg = ("Halted by safety monitor — out-of-scope egress blocked; "
+                        "remaining steps did not run.")
+            elif abort_reason:
+                _msg = f"Assessment did not complete — {abort_reason}. Results are partial."
+            else:
+                _msg = None
+            await event_bus.publish(str(session_id), {
+                "type": "session_update",
+                "status": final_status,
+                "finding_count": len(findings),
+                **({"message": _msg} if _msg else {}),
+            })
+        except Exception:  # noqa: BLE001 — leave a terminal status, then re-raise
+            await self._db.rollback()
+            await self._fail(session_id, "execution error — session did not finalize cleanly")
+            raise
 
     async def _run_autonomous_lane(
         self,
@@ -419,8 +461,15 @@ class OrchestratorService:
         whitelist_rules: dict,
         approval_flags: dict,
         actor_id: str,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], bool, str | None]:
         """XBOW autonomous lane (PR4a): drive the Performer engine behind the flag.
+
+        Returns ``(findings, session_killed, abort_reason)``. ``session_killed`` is
+        True when a dispatch tripped a SESSION-level safety kill mid-run, so ``run()``
+        finalizes the session ``killed`` (mirrors PlanExecutor.killed). ``abort_reason``
+        is a non-None string when the run ended on a NON-kill failure (a role error, or
+        the concurrency gate) so ``run()`` finalizes it ``failed`` rather than the
+        misleading clean ``completed``. Both falsy → a genuine clean completion.
 
         Binds the session-scoped safety context (one EgressMonitor seeded with the
         session's whitelist_rules + the approval flags for the per-dispatch tier
@@ -491,9 +540,21 @@ class OrchestratorService:
                 performer.register_role_by_name(role_name)
             except Exception:  # noqa: BLE001 — role not in registry → skip
                 continue
+        abort_reason: str | None = None
         try:
-            await performer.run_session()
+            results = await performer.run_session()
+            # A non-kill role failure (Pentester ollama_unreachable / iteration cap /
+            # envelope parse / CredentialNotFound; a failed Generator/Reporter) breaks
+            # run_session with result.error set. That is NOT a clean engagement — surface
+            # it so run() finalizes the session 'failed', not a rosy 'completed' with a
+            # 0-findings / risk-0 report (session aca3ad5f rosy-report class, non-kill arm).
+            if not performer.state.killed:
+                for r in results:
+                    if getattr(r, "error", None):
+                        abort_reason = r.error
+                        break
         except PerformerConcurrencyLimit as exc:
+            # The session never ran (capacity gate) — do not report it 'completed'.
             await self._audit.log(
                 action="performer.concurrency_limit",
                 actor_id=actor_id,
@@ -501,7 +562,8 @@ class OrchestratorService:
                 target_id=str(session_id),
                 details={"error": str(exc)},
             )
-        return list(performer.state.findings)
+            abort_reason = "performer_concurrency_limit"
+        return list(performer.state.findings), performer.state.killed, abort_reason
 
     async def _load_understanding(self, session_id: uuid.UUID) -> dict | None:
         """Read the session's persisted Understanding-of-Target (PR6 dispatch input)."""

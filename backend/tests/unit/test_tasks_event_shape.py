@@ -86,17 +86,19 @@ def _assert_step_shape(path: Path, expected_counts: dict[str, int]) -> None:
     )
 
 
-def test_executor_lifecycle_events_carry_step_dict():
-    # PlanExecutor.execute: 1 started, 1 completed, 3 failed (shim + generic + egress_violation).
+def test_executor_lifecycle_events_carry_step_dict():  # noqa: D401
+    # PlanExecutor.execute: 1 started, 1 completed, 4 failed
+    # (shim_block + generic error + egress_violation + session_killed).
     _assert_step_shape(
         EXECUTOR,
-        {"agent_started": 1, "agent_completed": 1, "agent_failed": 3},
+        {"agent_started": 1, "agent_completed": 1, "agent_failed": 4},
     )
 
 
 def test_performer_lifecycle_events_carry_step_dict():
-    # _execute_step_through_helper: 1 started, 1 completed, 3 failed (shim + generic + egress_violation).
+    # _execute_step_through_helper: 1 started, 1 completed, 4 failed
+    # (shim_block + generic error + egress_violation + session_killed).
     _assert_step_shape(
         PERFORMER,
-        {"agent_started": 1, "agent_completed": 1, "agent_failed": 3},
+        {"agent_started": 1, "agent_completed": 1, "agent_failed": 4},
     )

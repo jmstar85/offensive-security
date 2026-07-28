@@ -269,3 +269,67 @@ async def test_dispatch_tool_persists_agent_execution(db):
     assert len(rows) == 1
     assert rows[0].agent_type == "passive_recon"
     assert rows[0].status == "completed"
+
+
+async def test_autonomous_session_kill_finalizes_row_and_flags_state(db):
+    """A SESSION-level safety kill on the autonomous lane FINALIZES the in-flight
+    AgentExecution row (status='failed', reason='session_killed', ended_at set) —
+    not orphaned at 'running' — AND sets ``performer.state.killed`` so
+    ``run()`` marks the session ``killed`` instead of ``completed``
+    (session aca3ad5f autonomous-lane twin)."""
+    from unittest.mock import AsyncMock
+
+    from app.orchestrator.safety_exec import SafetyExecResult
+
+    p = Performer(db, uuid.uuid4())
+    p.bind_live_execution(
+        target={"ip_ranges": [], "domains": []},
+        approval_flags={},
+        whitelist_rules={},
+        actor_id="actor-1",
+    )
+    step = {"agent": "katana", "order": 3, "action": "crawl", "config": {}}
+    with patch("app.orchestrator.safety_exec.execute_tool_through_safety_chain",
+               new=AsyncMock(return_value=SafetyExecResult(killed=True))):
+        outcome = await p._execute_step_through_helper(step)
+    await db.flush()
+
+    assert outcome["killed"] is True
+    assert p.state.killed is True  # propagates to run() → session finalized 'killed'
+    rows = (await db.execute(
+        select(AgentExecution).where(AgentExecution.session_id == p.state.session_id)
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "failed"          # NOT orphaned at 'running'
+    assert rows[0].ended_at is not None
+    assert rows[0].output_json["reason"] == "session_killed"
+
+
+async def test_autonomous_dispatch_fail_closed_after_kill(db):
+    """Fail-closed chokepoint: once state.killed is set, _execute_step_through_helper
+    refuses to launch ANOTHER container — it never reaches the adapter-execute site
+    and creates no new AgentExecution row (defence for the nested-role / late-dispatch
+    window where the loop check alone could be bypassed)."""
+    from unittest.mock import AsyncMock
+
+    p = Performer(db, uuid.uuid4())
+    p.bind_live_execution(
+        target={"ip_ranges": [], "domains": []},
+        approval_flags={},
+        whitelist_rules={},
+        actor_id="actor-1",
+    )
+    p.state.killed = True  # session already hard-killed
+
+    chain = AsyncMock()  # blow up the test if the adapter-execute site is reached
+    with patch("app.orchestrator.safety_exec.execute_tool_through_safety_chain", chain):
+        outcome = await p._execute_step_through_helper({"agent": "nmap", "order": 1, "config": {}})
+    await db.flush()
+
+    assert outcome["killed"] is True
+    assert outcome["blocked_reason"] == "session_killed"
+    chain.assert_not_awaited()  # never launched a container
+    rows = (await db.execute(
+        select(AgentExecution).where(AgentExecution.session_id == p.state.session_id)
+    )).scalars().all()
+    assert rows == []  # no new row created post-kill
