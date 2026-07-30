@@ -371,8 +371,9 @@ class CoordinatorService:
           clock_fn: callable returning current monotonic wall-clock seconds (default: time.monotonic)
 
         Raises:
-          IterationCapHit on first cap trip. Persists session.status='failed'
-          via audit before raising. Calling code may catch and react.
+          IterationCapHit on first cap trip. Finalizes session.status='failed'
+          (plus a durable audit row) before raising, so a capped Coordinator run is
+          not left stranded at 'running'. Calling code may catch and react.
         """
         import time
         from app.core.config import settings
@@ -436,3 +437,19 @@ class CoordinatorService:
                 "tokens": tokens,
             },
         )
+        # Finalize the session 'failed' before the IterationCapHit unwinds the stack:
+        # a capped run is an aborted path, not a silent 'running'/'completed' (same
+        # honesty contract the deterministic + autonomous lanes now enforce). Commit
+        # so the terminal status survives even if a caller catches IterationCapHit
+        # without committing. Lazy imports avoid the service<->coordinator cycle.
+        from datetime import datetime, timezone
+
+        from sqlalchemy import update
+
+        from app.models.session import PentestSession
+        await self._db.execute(
+            update(PentestSession)
+            .where(PentestSession.id == session_id)
+            .values(status="failed", ended_at=datetime.now(timezone.utc))
+        )
+        await self._db.commit()

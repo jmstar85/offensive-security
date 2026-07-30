@@ -19,6 +19,7 @@ def _make_service():
     db = MagicMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
+    db.commit = AsyncMock()
     db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
     svc = CoordinatorService(db)
     # Patch .run so tests don't need a real DB/event_bus
@@ -162,6 +163,7 @@ def test_audit_log_action_and_details():
     db = MagicMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
+    db.commit = AsyncMock()
     db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
     svc = CoordinatorService(db)
     svc.run = AsyncMock(return_value=(MagicMock(), MagicMock()))
@@ -198,3 +200,32 @@ def test_infinite_loop_guard_does_not_run_forever():
     _, _, iteration_no = result
     assert iteration_no == 1
     svc.run.assert_awaited_once()
+
+
+def test_cap_hit_finalizes_session_failed():
+    """A cap trip FINALIZES the session status='failed' (UPDATE + commit) before the
+    IterationCapHit unwinds — a capped run is not left stranded at 'running'
+    (matches the documented contract; the aborted-path-honesty class)."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    executed: list[str] = []
+
+    async def _exec(stmt, *a, **k):
+        executed.append(str(stmt).lower())
+        return MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+
+    db.execute = _exec
+    svc = CoordinatorService(db)
+    svc.run = AsyncMock(return_value=(MagicMock(), MagicMock()))
+
+    with patch("app.core.config.settings") as mock_settings:
+        mock_settings.max_coordinator_iterations = 0
+        mock_settings.max_coordinator_wall_clock_seconds = 600
+        mock_settings.max_coordinator_total_tokens = 200_000
+        with pytest.raises(IterationCapHit):
+            asyncio.run(svc.run_with_iteration_cap(**_base_kwargs()))
+
+    assert any("update pentest_sessions" in s and "status" in s for s in executed), executed
+    db.commit.assert_awaited()
