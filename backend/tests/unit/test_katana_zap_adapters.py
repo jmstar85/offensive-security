@@ -4,16 +4,21 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.agents.katana import KatanaAdapter
 from app.agents.zap import ZapAdapter
 from app.agents.registry import get_adapter, get_tool_entry, list_agent_types
 
 
+@pytest.mark.usefixtures("require_docker_daemon")
 def test_both_registered_at_active_recon():
     for slug in ("katana", "zap"):
         assert slug in list_agent_types()
-        assert get_tool_entry(slug).tier == "active_recon"  # gated by approved_active_recon
-        assert get_tool_entry(slug).description  # registration tests require a description
+        entry = get_tool_entry(slug)
+        assert entry is not None
+        assert entry.tier == "active_recon"  # gated by approved_active_recon
+        assert entry.description  # registration tests require a description
     # resolvable via the docker backend
     assert type(get_adapter("katana")).__name__ == "KatanaAdapter"
     assert type(get_adapter("zap")).__name__ == "ZapAdapter"

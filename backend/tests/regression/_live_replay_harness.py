@@ -32,7 +32,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from itertools import count
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
@@ -181,7 +182,14 @@ async def run_saved_workflow_once(
     # get_adapter now lives in the shared runtime helper (PR2); event_bus stays
     # in the executor (publishes are caller-owned).
     with patch("app.orchestrator.safety_exec.get_adapter", side_effect=_fake_get_adapter), \
-         patch("app.orchestrator.executor.event_bus") as mock_bus:
+         patch("app.orchestrator.executor.event_bus") as mock_bus, \
+         patch("app.orchestrator.executor.datetime", wraps=datetime) as clock:
+        # Real elapsed time between replays is not the behavior under test.
+        # Advance per call so started_at still preserves actual creation order.
+        clock.now.side_effect = (
+            datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(milliseconds=tick)
+            for tick in count()
+        )
         mock_bus.publish = AsyncMock()
         findings = await executor.execute(
             session_id=session_id,

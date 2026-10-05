@@ -55,7 +55,7 @@ async def test_live_saved_workflow_agent_execution_rows_are_deterministic(db):
     run_b = await run_saved_workflow_once(db)
 
     diffs = compare_agent_execution_rows(
-        run_a["agent_execution_rows"], run_b["agent_execution_rows"]
+        run_a["agent_execution_rows"], run_b["agent_execution_rows"], tolerance_ms=0
     )
     assert diffs == [], f"agent_execution rows drifted across two live runs: {diffs}"
 

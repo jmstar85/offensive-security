@@ -15,6 +15,7 @@ from app.agents.registry import (
 from app.agents.nmap import NmapAdapter
 
 
+@pytest.mark.usefixtures("require_docker_daemon")
 def test_legacy_get_adapter_still_works():
     """Backward-compat: existing slugs map to instantiated adapters."""
     a = get_adapter("nmap")

@@ -166,6 +166,7 @@ def test_get_adapter_routes_kali_to_kali_backend():
     assert not isinstance(adapter.backend, DockerBackend)
 
 
+@pytest.mark.usefixtures("require_docker_daemon")
 def test_get_adapter_legacy_still_routes_to_docker_backend():
     adapter = get_adapter("nmap")
     assert isinstance(adapter.backend, DockerBackend)
