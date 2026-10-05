@@ -1,6 +1,7 @@
 # Phase 0 — 레포·베이스라인 무결성  [상태: git복구 완료 / 잔여: 테스트격리]
 
 > 선행: 없음 (모든 Phase의 기반). 공통 절차·Lore commit 규약은 [README](./README.md) 참조.
+> **권장 구현 모델(성능 최우선)**: 0-b = deep-low `gpt-6.1-sol`(debugging 스킬) / 리뷰 architect `claude-opus-4-8`. 상세는 [README 모델 매핑](./README.md#모델-매핑-성능-최우선).
 
 ## 목표 슬라이스
 디스크 상태를 추적 가능하게 만들고(완료), suite가 1회 실행으로 안정적으로 green이 되도록 테스트 격리 결함을 제거한다. 이게 돼야 이후 Phase의 커밋·CI·회귀검증이 신뢰 가능.

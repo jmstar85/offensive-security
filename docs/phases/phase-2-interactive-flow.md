@@ -1,6 +1,7 @@
 # Phase 2 — Interactive Flow 기반 (C → D1 → B)  [상태: 활성 목표]
 
 > 선행: Phase 1. 순서 강제: 2a(C) → 2b(cursor/tailer) → 2c(D1) → 2d(B). 공통 절차·Lore commit은 [README](./README.md).
+> **권장 구현 모델(성능 최우선)**: 2-a/2-c/2-d = deep-high `gpt-6-astra`(프로세스 경계 계약·동시성·원자성 불변식) · 2-b = deep-low `gpt-6.1-sol`(frontend 스킬). 리뷰: architect `claude-opus-4-8`. 이 Phase가 가장 난이도 높음 — 최고 레인 집중 배치. 상세 [README 모델 매핑](./README.md#모델-매핑-성능-최우선).
 
 ## 목표 슬라이스
 목표 이미지의 **#5 실시간 모니터링**(영속 sink·무손실 재접속·다중 worker)과 **#1 서버 보장 인터뷰**를 완성한다. **마이그레이션 013 이름만으로 Group C 완료 처리 금지** — 실제 이벤트 테이블·tailer·run lease가 없다.

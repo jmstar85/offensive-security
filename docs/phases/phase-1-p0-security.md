@@ -1,6 +1,7 @@
 # Phase 1 — P0 보안·정확성 (접근통제·상태전이)  [상태: 활성 목표]
 
 > 선행: Phase 0. 세 작업(1a/1b/1c)은 상호 독립 → 병렬/분할 가능. 공통 절차·Lore commit은 [README](./README.md).
+> **권장 구현 모델(성능 최우선)**: 1-a = deep-high `gpt-6-astra`(보안 불변식) · 1-b = deep-low-fast `gpt-6.1-sol-fast` · 1-c = deep-high `gpt-6-astra`(상태기계). 리뷰: 1-a는 **security-reviewer**, 1-c는 architect `claude-opus-4-8`. 상세 [README 모델 매핑](./README.md#모델-매핑-성능-최우선).
 
 ## 목표 슬라이스
 목표 이미지의 **#7 접근통제**와 **#4 안전체인(상태전이 정확성)**, **#1 인터뷰 기준 일관성**을 확보한다. 기능 확장(Phase 2+)보다 앞서야 하는 보안/정확성 결함.

@@ -1,6 +1,7 @@
 # Phase 3 — 운영 통제 (비용·빌드·CI)  [상태: 추적 후속]
 
 > 선행: Phase 2. 착수는 "이번 목표(Phase 0~2)" 완료 후. 세 작업(3a/3b/3c) 상호 독립. 공통 절차·Lore commit은 [README](./README.md).
+> **권장 구현 모델(성능 최우선)**: 3-a/3-b = deep-low `gpt-6.1-sol` · 3-c = deep-low-fast `gpt-6.1-sol-fast`. 리뷰: architect `claude-fable-5-1`. 상세 [README 모델 매핑](./README.md#모델-매핑-성능-최우선).
 
 ## 목표 슬라이스
 목표 이미지의 **#6 비용 통제**와 **#8 운영 GA**의 전제(재현 빌드·CI 회귀). 운영 진입 전 필수 통제.

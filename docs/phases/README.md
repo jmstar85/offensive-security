@@ -67,3 +67,61 @@ Not-tested: 테스트로 못 덮은 엣지/시나리오
 
 ## 완료 판정 (전 Phase 공통)
 코드 + 통과하는 테스트(1회 실행 green) + 실제 경로 수동검증 3요소 충족. 보안/상태전이는 사용자×팀 조합·pause→승인→재개를 실제로 돌려 확인. 테스트 수만으로 완료 선언 금지.
+
+## 모델 매핑 (성능 최우선)
+
+비용·속도보다 **구현 정확성**을 최우선으로 배정한다. 배정 원칙:
+- **비가역적 정확성·불변식·프로세스 경계 횡단·동시성·in-repo 패턴 없음** → 최고 추론 레인 **deep-high (`gpt-6-astra`)**.
+- **읽고 결정 가능한 백엔드/로직/알고리즘·in-repo 패턴 존재** → 강력 실행 레인 **deep-low (`gpt-6.1-sol`)**; 기계적으로 명확한 건 **`gpt-6.1-sol-fast`**.
+- **프론트엔드(React)** → frontend 스킬 로드한 deep-low (`gpt-6.1-sol`).
+- **리뷰는 저자와 다른 레인**(프로젝트 규칙: self-approve 금지) → architect/critic **(`claude-opus-4-8` / `claude-fable-5-1`)**, 보안 Phase는 security-reviewer.
+
+| Phase·작업 | 성격 | 구현 모델(성능 최우선) | 리뷰 모델 | 근거 |
+|---|---|---|---|---|
+| 0-b 테스트 격리 | 디버깅, settleable | **deep-low `gpt-6.1-sol`** (debugging 스킬) | architect `claude-opus-4-8` | module reload 간섭 가설검증, in-repo |
+| 1-a authz+마스킹 | 멀티테넌트 보안 불변식 | **deep-high `gpt-6-astra`** | **security-reviewer** + architect | 팀 경계 정확성, 저장/반환 경계 횡단 |
+| 1-b 임계치 단일화 | 기계적 통일 | **deep-low-fast `gpt-6.1-sol-fast`** | architect `claude-fable-5-1` | 설정 1곳 통일, 리스크 낮음 |
+| 1-c rescope 상태전이 | 상태기계 정확성 | **deep-high `gpt-6-astra`** | architect `claude-opus-4-8` | running/executing·양 레인 횡단, failed 오분류 |
+| 2-a 이벤트테이블·side-sink | 프로세스 경계 계약·불변식 | **deep-high `gpt-6-astra`** | architect `claude-opus-4-8` | in-repo 패턴 없음, 별도 pool commit 보장 |
+| 2-b cursor/tailer(+React) | 알고리즘+프론트 | **deep-low `gpt-6.1-sol`** (frontend 스킬) | architect `claude-opus-4-8` | 2a 이후 settleable, seq/dedup 알고리즘 |
+| 2-c 다중worker/lease | 동시성 정확성 | **deep-high `gpt-6-astra`** | architect `claude-opus-4-8` | run lease·연결예산 불변식, 2+ worker 실검증 |
+| 2-d durable 인터뷰 | 원자적 상태전이 | **deep-high `gpt-6-astra`** | architect `claude-opus-4-8` | kickoff_pending→running 원자성, 재구동 |
+| 3-a budget 실연결 | 백엔드 집계 | **deep-low `gpt-6.1-sol`** | architect `claude-fable-5-1` | 집계·호출경로 삽입, settleable |
+| 3-b Kali 빌드 | docker/build 설정 | **deep-low `gpt-6.1-sol`** | architect `claude-fable-5-1` | lint↔Dockerfile 정합, ARG 전달 |
+| 3-c CI 회귀 | workflow 작성 | **deep-low-fast `gpt-6.1-sol-fast`** | architect `claude-fable-5-1` | 기존 명령 기반 게이트 추가 |
+| 4-a 확장 도구 어댑터 | 백엔드, in-repo 패턴 | **deep-low `gpt-6.1-sol`** | architect `claude-fable-5-1` | 기존 어댑터 패턴 복제 |
+| 4-b Family/Understanding | 오케스트레이션 메커니즘 | **deep-high `gpt-6-astra`** | architect `claude-opus-4-8` | family 스케줄링·LLM 전개 설계 |
+| 4-c 메모리 검색 | parser+연결 | **deep-low `gpt-6.1-sol`** | architect `claude-fable-5-1` | YAML parser·delegator 분기 연결 |
+| 4-d Claude 구독 OAuth | 보안 프로토콜 | **deep-low `gpt-6.1-sol`** + document-specialist(docs) | **security-reviewer** | PKCE 표준 문서화됨, 보안 리뷰 필수 |
+| 4-e 운영 자동화·GA | ops·증거 | **deep-low `gpt-6.1-sol`** | architect `claude-opus-4-8` | canary/rotation/digest, 8 hard gate |
+
+> 주의: deep-high/deep-low는 이 환경의 `task` 레인이다. 프로젝트의 OMG/OMC 오케스트레이션을 쓰면 deep-high↔`@architect`+강모델, deep-low↔`@executor`(opus), 보안리뷰↔`@security-reviewer`로 대응시킨다. 모델명이 환경에서 바뀌면 "레인(성격)"을 기준으로 동급 최상위를 고른다.
+
+## 모델 매핑 (성능 최우선)
+
+비용·속도보다 **구현 정확성을 최우선**으로 배정한다. 원칙:
+- **비가역적 정확성·불변식·프로세스 경계 횡단·동시성·in-repo 패턴 없음** → 최고 추론 레인 **deep-high (`gpt-6-astra`)**.
+- **읽고 결정 가능한 백엔드/로직/알고리즘·in-repo 패턴 존재** → 강력 실행 레인 **deep-low (`gpt-6.1-sol`)**, 기계적으로 명확한 건은 **`gpt-6.1-sol-fast`**.
+- **리뷰는 저자와 다른 레인** → architect/critic **(`claude-opus-4-8` / `claude-fable-5-1`)**, 보안 Phase는 `@security-reviewer`. (프로젝\�score 규칙: 저자≠리뷰어, 동일 컨텍스트 자가승인 금지.)
+- 프론트엔드 비중 작업(2b)은 동일 레인에서 `frontend` 스킬 로드.
+
+| Phase·작업 | 성ꈁ | 구현 모델(성능 최우선) | 리뷰 모델 | 근거 |
+|---|---|---|---|---|
+| 0-b 테스트 격리 | 디버깅 | deep-low `gpt-6.1-sol` | architect | 가설구동, settleable |
+| 1-a authz+마스킹 | 보안·불변식 | **deep-high `gpt-6-astra`** | `@security-reviewer` | 멀티테넌트 정확성, 경계 횡단 |
+| 1-b 임계치 통일 | 기계적 | deep-low-fast `gpt-6.1-sol-fast` | architect | 단일 소스로 통일, 저위험 |
+| 1-c rescope 상태전이 | 상태기계 정확성 | **deep-high `gpt-6-astra`** | architect | 양 레인 횡단 pause/승인/재개 불변식 |
+| 2-a 이벤트테이블·side-session | 계약·불변식 | **deep-high `gpt-6-astra`** | architect | 프로세스 경계 계약, in-repo 패턴 없음 |
+| 2-b cursor/tailer(+React) | 알고리즘+UI | deep-low `gpt-6.1-sol` (+`frontend`) | architect | 2a 이후 settleable |
+| 2-c 다중 worker/lease | 동시성 | **deep-high `gpt-6-astra`** | architect | 동시성 정확성을 불변식으로 증명 |
+| 2-d durable 인터뷰 | 원자성 | **deep-high `gpt-6-astra`** | architect | 원자적 kickoff 상태전이 |
+| 3-a budget 연결 | 백엔드 | deep-low `gpt-6.1-sol` | architect | 집계 로직, settleable |
+| 3-b kali 빌드 | 빌드·docker | deep-low `gpt-6.1-sol` | architect | 구성 수정 |
+| 3-c CI 회귀 | 인프라 | deep-low-fast `gpt-6.1-sol-fast` | architect | 명확한 workflow |
+| 4-a 확장 어댑터 | 백엔드 | deep-low `gpt-6.1-sol` | architect | in-repo 어댑터 패턴 존재 |
+| 4-b family/understanding | 오케스트레이션 메커니즘 | **deep-high `gpt-6-astra`** | architect | 메커니즘 설계, 패턴 없음 |
+| 4-c 메모리 검색 | 백엔드 | deep-low `gpt-6.1-sol` | architect | parser+연결, settleable |
+| 4-d Claude 구독 OAuth | 보안 프로토콜 | deep-low `gpt-6.1-sol` (+`document-specialist`) | `@security-reviewer` | PKCE 표준·문서 존재, 보안리뷰 필수 |
+| 4-e 운영 자동화·GA | 운영 | deep-low `gpt-6.1-sol` | architect + `@security-reviewer` | 기존 파일 구체화 |
+
+대체(레인 미가용 시): deep-high→`claude-opus-4-8`, deep-low→`gpt-5.6-sol`/`claude-opus-4-8`. OMG/OMC 래퍼 사용 시 deep-high≈`@architect`로 설계 후 `@executor`(opus) 구현, deep-low≈`@executor`, 리뷰≈`@code-reviewer`/`@security-reviewer`.

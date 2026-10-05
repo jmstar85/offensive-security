@@ -1,6 +1,7 @@
 # Phase 4 — 전체 XBOW 확장 · OAuth · GA  [상태: 추적 후속]
 
 > 선행: Phase 3. 별도 완료 기준으로 추적. 공통 절차·Lore commit은 [README](./README.md).
+> **권장 구현 모델(성능 최우선)**: 4-a/4-c/4-e = deep-low `gpt-6.1-sol` · 4-b = deep-high `gpt-6-astra`(오케스트레이션 메커니즘) · 4-d = deep-low `gpt-6.1-sol` + document-specialist. 리뷰: 4-d는 **security-reviewer**, 나머지 architect. 상세 [README 모델 매핑](./README.md#모델-매핑-성능-최우선).
 
 ## 목표 슬라이스
 목표 이미지의 **#3 실도구(확장)**, Family/Understanding 전개, Claude 구독 OAuth, **#8 운영 GA 서명**까지. 전체 XBOW 비전 완성.
