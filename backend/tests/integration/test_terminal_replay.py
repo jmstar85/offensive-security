@@ -28,7 +28,7 @@ from sqlalchemy import select
 from app.api.v1.sessions import get_executions, get_terminal
 from app.models.project import Project
 from app.models.session import AgentExecution, PentestSession, TerminalLine
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.orchestrator.terminal_sink import TerminalLineSink
 
 
@@ -44,9 +44,20 @@ def _user(team_id: uuid.UUID, role=UserRole.MEMBER):
 
 
 async def _seed_session(db, *, team_id: uuid.UUID) -> uuid.UUID:
-    """Seed project + session (team_id set as WorkflowService.create_draft does)."""
+    """Seed owner + project + session. Authorization resolves via the project
+    owner's team (the authoritative 1-a source), so the owner is a real user in
+    ``team_id`` rather than a bare uuid."""
+    owner = User(
+        email=f"owner-{uuid.uuid4()}@example.com",
+        password_hash="x" * 60,
+        full_name="Owner",
+        role=UserRole.MEMBER,
+        team_id=team_id,
+    )
+    db.add(owner)
+    await db.flush()
     project = Project(
-        name="proj", client_name="acme", status="active", created_by=uuid.uuid4()
+        name="proj", client_name="acme", status="active", created_by=owner.id
     )
     db.add(project)
     await db.flush()
@@ -191,7 +202,7 @@ async def test_get_terminal_forbids_other_team(db):
         await get_terminal(
             session_id=session_id, after_seq=0, db=db, current_user=other
         )
-    assert ei.value.status_code == 403
+    assert ei.value.status_code == 404  # authoritative authz 404s cross-team (no existence disclosure)
 
 
 @pytest.mark.asyncio

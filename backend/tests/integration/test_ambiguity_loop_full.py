@@ -15,7 +15,7 @@ from app.models.user import Team, User, UserRole
 
 def test_decide_next_state_below_threshold_returns_ready():
     """Ambiguity ≤ threshold → ready_for_review regardless of turn count."""
-    assert _decide_next_state(0.30, 1) == "ready_for_review"
+    assert _decide_next_state(0.20, 1) == "ready_for_review"
     assert _decide_next_state(0.10, 5) == "ready_for_review"
 
 

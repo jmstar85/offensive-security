@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,18 +56,36 @@ class OrchestratorService:
     ) -> None:
         """Full autonomous pipeline: prompt → plan → safety → execute → report."""
 
-        # 1. Rate limit check
-        if not _check_rate_limit(str(actor_id)):
-            await self._fail(session_id, "Rate limit exceeded")
-            return
-
-        # 2. Load session + target + whitelist
+        # Load the session FIRST so a parked run is refused before any branch that
+        # can mutate terminal state (e.g. the rate-limit _fail).
         sess_result = await self._db.execute(
             select(PentestSession).where(PentestSession.id == session_id)
         )
         session = sess_result.scalar_one_or_none()
         if not session:
             return
+
+        # Fail-closed re-entry (1-c / B2): a session parked awaiting an operator
+        # rescope decision must never be resurrected OR finalized by a duplicate /
+        # stale launch (including one that would trip the rate limit) -- leave it
+        # paused with its approval pending. Resume goes only through decide_rescope,
+        # which moves the session to 'executing' before re-launching.
+        if session.status == "paused_for_rescope":
+            await self._audit.log(
+                action="run_refused_paused_for_rescope",
+                actor_id=str(actor_id),
+                target_entity="pentest_session",
+                target_id=str(session_id),
+                details={"status": session.status},
+            )
+            return
+
+        # 1. Rate limit check
+        if not _check_rate_limit(str(actor_id)):
+            await self._fail(session_id, "Rate limit exceeded")
+            return
+
+        # 2. Load target + whitelist
 
         target_result = await self._db.execute(
             select(Target).where(Target.project_id == session.project_id)
@@ -107,7 +126,19 @@ class OrchestratorService:
         from app.orchestrator.coordinator import CoordinatorService, ReplayLaneViolation
         from app.orchestrator.llm.base import ModelUnreachable
 
-        lane = "saved_workflow" if session.plan_json else "fresh_plan"
+        # A session that ran the autonomous (fresh-plan) lane persists a generated
+        # plan_json tagged _autonomous_lane; treat that as fresh_plan on a re-launch
+        # (rescope resume) so the autonomous lane is re-entered rather than
+        # mis-detected as a saved-workflow replay.
+        lane = (
+            "saved_workflow"
+            if session.plan_json
+            and not (
+                isinstance(session.plan_json, dict)
+                and session.plan_json.get("_autonomous_lane")
+            )
+            else "fresh_plan"
+        )
         # The XBOW autonomous lane (step 9) drives the Performer, which generates
         # and executes its OWN plan from the operator objective. The legacy
         # AttackPlanner pre-pass below is only a hint on that lane, so its failure
@@ -210,12 +241,14 @@ class OrchestratorService:
                     session_id, plan_of_work.ordered_phases, actor_id
                 )
 
-        if session.plan_json:
+        if lane == "saved_workflow":
             await event_bus.publish(str(session_id), {
                 "type": "session_update",
                 "status": "running",
                 "message": "Executing saved workflow...",
             })
+            # lane == 'saved_workflow' implies a persisted plan; narrow away None.
+            assert session.plan_json is not None
             try:
                 plan = normalize_workflow_plan(session.plan_json)
                 steps = topologically_sorted_steps(plan)
@@ -272,14 +305,22 @@ class OrchestratorService:
                     await self._fail(session_id, f"Plan generation failed: {exc}")
                     return
 
-            # 6. Persist plan
+            # 6. Persist plan. On the autonomous lane tag the generated plan so a
+            # re-launch (rescope resume) re-detects fresh_plan instead of flipping to
+            # the saved-workflow replay lane (the autonomous Performer generates its
+            # own plan; this persisted copy is a record, not the execution source).
+            steps = plan.get("steps", [])
+            persist_plan = (
+                {**plan, "_autonomous_lane": True}
+                if autonomous_lane and isinstance(plan, dict)
+                else plan
+            )
             await self._db.execute(
                 update(PentestSession)
                 .where(PentestSession.id == session_id)
-                .values(plan_json=plan)
+                .values(plan_json=persist_plan)
             )
             await self._db.commit()
-            steps = plan.get("steps", [])
 
         # Ensure every step carries its ToolEntry tier — the planner does not
         # always emit one, and filter_by_tier_flags reads step["tier"].
@@ -367,12 +408,14 @@ class OrchestratorService:
         # never ran, yet the session was marked completed with a reassuring report).
         session_killed = False
         abort_reason: str | None = None
+        paused_for_rescope = False
         # Guard the whole execute→finalize span: an escaping exception (DB/serialization
         # error in the lane, _load_understanding, or the report flush) must leave a
         # TERMINAL status, never strand the session at 'running' forever.
         try:
             if autonomous_lane:
-                findings, session_killed, abort_reason = await self._run_autonomous_lane(
+                (findings, session_killed, abort_reason,
+                 paused_for_rescope) = await self._run_autonomous_lane(
                     session_id=session_id,
                     session=session,
                     prompt=prompt,
@@ -384,15 +427,45 @@ class OrchestratorService:
                 )
             else:
                 executor = PlanExecutor(self._db)
+                # Resume-from-offset (1-c): on an approved-rescope re-launch, skip the
+                # steps already completed (by stable position) and carry their
+                # findings forward so only remaining approved work runs and the
+                # resumed report keeps prior findings. (0, []) on a first run.
+                resume_idx, prior_findings = await executor._resume_progress(session_id)
                 findings = await executor.execute(
                     session_id=session_id,
                     steps=approved_steps,
                     target=target,
                     whitelist_rules=whitelist_rules,
                     actor_id=str(actor_id),
+                    resume_from_index=resume_idx,
+                    prior_findings=prior_findings,
                 )
                 session_killed = executor.killed
+                paused_for_rescope = executor.paused_for_rescope
             await self._db.commit()
+
+            # Durable rescope park (1-c): a discovered out-of-scope host paused the
+            # session -- RescopeService set status 'paused_for_rescope' and persisted
+            # a pending approval row. This is a NON-terminal parked state that
+            # RescopeService.decide_rescope resumes, so it must NOT be overwritten by
+            # a completed/failed finalize or a generated report. A safety kill wins.
+            if paused_for_rescope and not session_killed:
+                await self._db.commit()
+                await self._audit.log(
+                    action="session_paused_for_rescope",
+                    actor_id=str(actor_id),
+                    target_entity="pentest_session",
+                    target_id=str(session_id),
+                    details={"finding_count": len(findings)},
+                )
+                await self._db.commit()
+                await event_bus.publish(str(session_id), {
+                    "type": "session_update",
+                    "status": "paused_for_rescope",
+                    "finding_count": len(findings),
+                })
+                return
 
             # Terminal disposition: killed (safety abort) | failed (non-kill abort) |
             # completed (clean). ``aborted`` drives the report summary to say PARTIAL /
@@ -461,7 +534,7 @@ class OrchestratorService:
         whitelist_rules: dict,
         approval_flags: dict,
         actor_id: str,
-    ) -> tuple[list[dict], bool, str | None]:
+    ) -> tuple[list[dict], bool, str | None, bool]:
         """XBOW autonomous lane (PR4a): drive the Performer engine behind the flag.
 
         Returns ``(findings, session_killed, abort_reason)``. ``session_killed`` is
@@ -495,6 +568,15 @@ class OrchestratorService:
         # loop knows WHAT to do (without the objective the LLM has no task).
         performer.state.context["objective"] = prompt
         performer.state.context["approved_steps"] = list(steps)
+
+        # Resume-from-progress (1-c): on an approved-rescope re-launch seed the prior
+        # completed tool results + findings so the autonomous loop CONTINUES from
+        # where it paused instead of restarting, and the resumed report keeps prior
+        # findings. Empty on a first run.
+        prior_results, prior_findings = await self._autonomous_prior(session_id)
+        if prior_results:
+            performer.state.context["prior_tool_results"] = prior_results
+            performer.state.findings.extend(prior_findings)
 
         # PR6 (A1b / Blocking 2): store ONLY the session-constant inputs used to
         # build the per-role client_factory — never a minted client. run_session
@@ -550,8 +632,13 @@ class OrchestratorService:
             # 0-findings / risk-0 report (session aca3ad5f rosy-report class, non-kill arm).
             if not performer.state.killed:
                 for r in results:
-                    if getattr(r, "error", None):
-                        abort_reason = r.error
+                    err = getattr(r, "error", None)
+                    # A rescope pause is NOT a failure: the Pentester returns
+                    # error='paused_for_rescope' to STOP the loop while the session
+                    # is parked for the operator decision. run() parks it (never
+                    # finalizes failed) off performer.state.paused_for_rescope.
+                    if err and err != "paused_for_rescope":
+                        abort_reason = err
                         break
         except PerformerConcurrencyLimit as exc:
             # The session never ran (capacity gate) — do not report it 'completed'.
@@ -563,7 +650,34 @@ class OrchestratorService:
                 details={"error": str(exc)},
             )
             abort_reason = "performer_concurrency_limit"
-        return list(performer.state.findings), performer.state.killed, abort_reason
+        return (list(performer.state.findings), performer.state.killed,
+                abort_reason, performer.state.paused_for_rescope)
+
+    async def _autonomous_prior(
+        self, session_id: uuid.UUID
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Prior completed tool results (agent/target/findings) + flat findings for an
+        autonomous-lane resume. A fresh session returns ([], [])."""
+        from app.models.session import AgentExecution
+
+        rows = (await self._db.execute(
+            select(AgentExecution)
+            .where(
+                AgentExecution.session_id == session_id,
+                AgentExecution.status == "completed",
+            )
+            .order_by(AgentExecution.started_at, AgentExecution.id)
+        )).scalars().all()
+        results: list[dict[str, Any]] = []
+        findings: list[dict[str, Any]] = []
+        for r in rows:
+            out = r.output_json if isinstance(r.output_json, dict) else {}
+            raw = out.get("findings")
+            fnds: list[dict[str, Any]] = raw if isinstance(raw, list) else []
+            cfg = r.config_json if isinstance(r.config_json, dict) else {}
+            results.append({"agent": r.agent_type, "target": cfg.get("target"), "findings": fnds})
+            findings.extend(fnds)
+        return results, findings
 
     async def _load_understanding(self, session_id: uuid.UUID) -> dict | None:
         """Read the session's persisted Understanding-of-Target (PR6 dispatch input)."""

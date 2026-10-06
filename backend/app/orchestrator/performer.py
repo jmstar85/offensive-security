@@ -96,6 +96,12 @@ class PerformerSession:
     # the session ``killed`` instead of overwriting it back to ``completed`` (the
     # autonomous-lane twin of the deterministic PlanExecutor.killed signal).
     killed: bool = False
+    # Set True when a dispatch discovered an out-of-scope host and parked the
+    # session at paused_for_rescope (RescopeService persisted a pending approval
+    # row). _dispatch_tool fail-closes on it and _run_autonomous_lane reads it so
+    # OrchestratorService.run PARKS the run (never completes/fails it) awaiting the
+    # operator's rescope decision.
+    paused_for_rescope: bool = False
     # PR7: nested sub-role launch depth. Incremented/decremented by
     # ``delegate_tool_call``'s ROLE_REGISTRY branch (only reachable when a trusted
     # automation caller passes ``allow_role_invocation=True``) so a role that
@@ -244,11 +250,17 @@ class Performer:
                 await self._persist_msgchain_end(chain_id, role_name, result)
 
                 if result.error:
-                    logger.error(
-                        "Role %s failed after retries: %s. Halting loop.",
-                        role_name,
-                        result.error,
-                    )
+                    if result.error == "paused_for_rescope":
+                        logger.info(
+                            "Role %s paused for operator rescope approval; halting loop.",
+                            role_name,
+                        )
+                    else:
+                        logger.error(
+                            "Role %s failed after retries: %s. Halting loop.",
+                            role_name,
+                            result.error,
+                        )
                     break
 
                 # Pipe each role's primary output into the shared context so
@@ -370,15 +382,21 @@ class Performer:
 
         from app.core.events import event_bus
         from app.models.msgchain import MsgChain
+        from app.safety.history_masking import scrub_messages
 
         try:
             db = self.state.db
-            status = "failed" if result.error else "finished"
+            if result.error == "paused_for_rescope":
+                status = "paused"
+            elif result.error:
+                status = "failed"
+            else:
+                status = "finished"
             await db.execute(
                 update(MsgChain)
                 .where(MsgChain.id == chain_id)
                 .values(
-                    messages_json=result.messages,
+                    messages_json=scrub_messages(self.state.session_id, result.messages),
                     status=status,
                     ended_at=datetime.now(timezone.utc),
                     retries=getattr(result, "retries", 0),
@@ -438,6 +456,14 @@ class Performer:
         without going through OrchestratorService, this contract must add a
         whitelist re-check.
         """
+        # Fail-closed once the session is parked awaiting operator rescope
+        # approval: a discovered out-of-scope host paused the run, so NO further
+        # tool may reach an adapter -- a late, nested, or duplicate dispatch would
+        # probe further while the scope-gate the pause waits on is still open.
+        # Mirrors the state.killed chokepoint in _execute_step_through_helper.
+        if self.state.paused_for_rescope:
+            return {"approved": False, "executed": False, "paused_for_rescope": True}
+
         # Lazy imports break a circular dep cycle: performer.py is imported
         # by service.py, which itself imports the safety layers.
         from app.agents.registry import get_tool_entry, list_agent_types
@@ -574,6 +600,9 @@ class Performer:
         if self.state.killed:
             return {"executed": False, "killed": True,
                     "blocked_reason": "session_killed", "findings": []}
+        if self.state.paused_for_rescope:
+            return {"executed": False, "paused_for_rescope": True,
+                    "blocked_reason": "paused_for_rescope", "findings": []}
 
         db = self.state.db
         session_id = self.state.session_id
@@ -803,6 +832,7 @@ class Performer:
                 )
                 if approval is not None:
                     paused = True
+                    self.state.paused_for_rescope = True
                     rescope_id = str(approval.id)
                     await event_bus.publish(str(session_id), {
                         "type": "session_update",

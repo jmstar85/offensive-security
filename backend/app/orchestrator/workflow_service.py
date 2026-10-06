@@ -59,6 +59,8 @@ from app.orchestrator.model_client import ModelClient, ModelUnreachable
 from app.orchestrator.model_selector import ModelSelector
 from app.safety.audit import AuditLogger
 from app.safety.whitelist import WhitelistValidator
+from app.safety.history_masking import scrub_json_str
+from app.orchestrator.interview_policy import interview_ambiguity_target
 
 
 CHAT_SYSTEM_PROMPT = """You are an AI security orchestrator drafting an authorized penetration testing plan.
@@ -193,16 +195,6 @@ def min_required_fields_present(draft_plan: dict) -> bool:
     return True
 
 
-def interview_ambiguity_target() -> float:
-    """The ambiguity ceiling the interview must reach before ready_for_review.
-
-    Group B: when ``osa_interview_autoblock_enabled`` is on, the flow interview
-    uses the tighter autoblock target (the "until ≤ 20%" contract); otherwise the
-    legacy ``workflow_ambiguity_threshold`` (0.35) applies.
-    """
-    if getattr(settings, "osa_interview_autoblock_enabled", False):
-        return settings.osa_interview_autoblock_threshold
-    return settings.workflow_ambiguity_threshold
 
 
 def _next_state_after_turn(turn: AssistantTurn, new_turn_count: int) -> str:
@@ -441,7 +433,7 @@ class WorkflowService:
         user_msg = WorkflowMessage(
             pentest_session_id=session.id,
             role="user",
-            content=user_message,
+            content=scrub_json_str(session.id, user_message),
             turn_index=turn_index,
         )
         self._db.add(user_msg)
@@ -740,10 +732,13 @@ class WorkflowService:
         asst_msg = WorkflowMessage(
             pentest_session_id=session.id,
             role="assistant",
-            content=response.text,
+            content=scrub_json_str(session.id, response.text),
             turn_index=turn_index,
             ambiguity_after=ambiguity_decimal,
-            blockers_json={"items": turn.blockers, "reasoning": turn.reasoning},
+            blockers_json={
+                "items": [scrub_json_str(session.id, b) for b in turn.blockers],
+                "reasoning": scrub_json_str(session.id, turn.reasoning),
+            },
             tokens_in=response.tokens_in,
             tokens_out=response.tokens_out,
         )

@@ -10,8 +10,13 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.project import Project
 from app.models.session import AgentExecution, PentestSession, TerminalLine
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.orchestrator.workflow_plan import WorkflowPlanError, normalize_workflow_plan
+from app.api.v1._session_security import (
+    accessible_session_ids,
+    authorize_session,
+    scrub_model,
+)
 
 router = APIRouter()
 
@@ -47,34 +52,6 @@ class TerminalLineResponse(BaseModel):
     agent_type: str | None
     execution_id: uuid.UUID | None
     created_at: datetime | None
-
-
-async def _authorize_session_history(
-    db: AsyncSession, user: User, session_id: uuid.UUID
-) -> None:
-    """Team-ownership gate for history-replay reads, mirroring the team-ownership
-    intent of ``ws._authorize_session_access`` so the reload authz matches the
-    live WS: admins may read any session; otherwise the session must belong to the
-    caller's team.
-
-    NOTE: ws.py checks ``project.team_id``, but ``Project`` has no ``team_id``
-    column (that reference is a latent bug); the actual team linkage lives on
-    ``PentestSession.team_id`` (set to the creating user's team in
-    ``WorkflowService.create_draft``). We gate on that column, which is the
-    working realization of the same "same-team" ownership rule. Runs on the
-    request-scoped ``db`` (the WS variant opens its own AsyncSession only because
-    the socket handler lacks a request scope). Raises 404 (unknown session) or
-    403 (wrong team).
-    """
-    if user.role == UserRole.ADMIN:
-        return
-    sess = (
-        await db.execute(select(PentestSession).where(PentestSession.id == session_id))
-    ).scalar_one_or_none()
-    if sess is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if sess.team_id != user.team_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @router.post("/", response_model=SessionResponse, status_code=201)
@@ -171,16 +148,20 @@ async def list_sessions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(PentestSession)
+    allowed = await accessible_session_ids(db, current_user)
+    query = select(PentestSession).where(PentestSession.id.in_(allowed))
     if project_id:
         query = query.where(PentestSession.project_id == project_id)
     result = await db.execute(query.order_by(PentestSession.created_at.desc()))
     sessions = result.scalars().all()
     return [
-        SessionResponse(
-            id=s.id, project_id=s.project_id, prompt=s.prompt,
-            status=s.status, plan_json=s.plan_json,
-            started_at=s.started_at, ended_at=s.ended_at,
+        scrub_model(
+            SessionResponse(
+                id=s.id, project_id=s.project_id, prompt=s.prompt,
+                status=s.status, plan_json=s.plan_json,
+                started_at=s.started_at, ended_at=s.ended_at,
+            ),
+            s.id,
         )
         for s in sessions
     ]
@@ -192,14 +173,14 @@ async def get_session(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(PentestSession).where(PentestSession.id == session_id))
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return SessionResponse(
-        id=session.id, project_id=session.project_id, prompt=session.prompt,
-        status=session.status, plan_json=session.plan_json,
-        started_at=session.started_at, ended_at=session.ended_at,
+    session = await authorize_session(db, session_id, current_user)
+    return scrub_model(
+        SessionResponse(
+            id=session.id, project_id=session.project_id, prompt=session.prompt,
+            status=session.status, plan_json=session.plan_json,
+            started_at=session.started_at, ended_at=session.ended_at,
+        ),
+        session.id,
     )
 
 
@@ -221,6 +202,7 @@ async def get_executions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await authorize_session(db, session_id, current_user)
     result = await db.execute(
         select(AgentExecution).where(AgentExecution.session_id == session_id)
     )
@@ -248,7 +230,7 @@ async def get_terminal(
     history once on mount and de-dupe against live events on ``seq``. Authz mirrors
     the live WS (team-ownership) so history and live streams gate identically.
     """
-    await _authorize_session_history(db, current_user, session_id)
+    await authorize_session(db, session_id, current_user)
     result = await db.execute(
         select(TerminalLine)
         .where(
@@ -258,9 +240,12 @@ async def get_terminal(
         .order_by(TerminalLine.seq)
     )
     return [
-        TerminalLineResponse(
-            seq=t.seq, line=t.line, agent_type=t.agent_type,
-            execution_id=t.execution_id, created_at=t.created_at,
+        scrub_model(
+            TerminalLineResponse(
+                seq=t.seq, line=t.line, agent_type=t.agent_type,
+                execution_id=t.execution_id, created_at=t.created_at,
+            ),
+            session_id,
         )
         for t in result.scalars().all()
     ]

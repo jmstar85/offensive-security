@@ -31,6 +31,8 @@ from app.models.msgchain import MsgChain
 from app.models.session import PentestSession, WorkflowMessage
 from app.orchestrator.memorist_auto_call import auto_inject
 from app.orchestrator.roles.generator import Generator
+from app.safety.history_masking import scrub_json_str, scrub_messages
+from app.orchestrator.interview_policy import interview_ambiguity_target
 
 
 @dataclass
@@ -49,8 +51,8 @@ class AmbiguityTurnResult:
 
 
 def _decide_next_state(ambiguity: float, turn_count: int) -> str:
-    """v4.0 P4 transition rules — mirror `_next_state_after_turn` in v3.2.1."""
-    if ambiguity <= settings.workflow_ambiguity_threshold:
+    """Apply the same effective target advertised by the workflow API."""
+    if ambiguity <= interview_ambiguity_target():
         return "ready_for_review"
     if turn_count >= settings.workflow_max_interview_turns:
         return "needs_human_review"
@@ -161,10 +163,13 @@ class AmbiguityLoop:
         msg = WorkflowMessage(
             pentest_session_id=session.id,
             role="assistant",
-            content=envelope_text,
+            content=scrub_json_str(session.id, envelope_text),
             turn_index=new_turn_count,
             ambiguity_after=Decimal(str(round(ambiguity, 3))),
-            blockers_json={"items": blockers} if blockers else None,
+            blockers_json=(
+                {"items": [scrub_json_str(session.id, b) for b in blockers]}
+                if blockers else None
+            ),
         )
         self._db.add(msg)
 
@@ -172,10 +177,10 @@ class AmbiguityLoop:
         chain = MsgChain(
             pentest_session_id=session.id,
             role_name="generator",
-            messages_json=[
+            messages_json=scrub_messages(session.id, [
                 {"role": "user", "content": user_content},
                 {"role": "assistant", "content": envelope_text},
-            ],
+            ]),
             started_at=datetime.now(timezone.utc),
             status="finished",
         )

@@ -118,12 +118,16 @@ class RescopeService:
         ever sees them (safety-favoring default).
         """
         session = await self._fetch_session(session_id)
-        if session.status not in {"executing", "paused_for_rescope"}:
+        # Both execution lanes persist status='running' (service.py marks the
+        # session 'running' before dispatch); 'executing' is the legacy vocabulary.
+        # Accept both so a mid-run discovered-host pause is not rejected with a 409
+        # and silently swallowed (1-c: running/executing vocabulary reconciliation).
+        if session.status not in {"running", "executing", "paused_for_rescope"}:
             raise HTTPException(
                 status_code=409,
                 detail=(
                     f"Cannot pause for rescope from state '{session.status}'; "
-                    "session must be 'executing'"
+                    "session must be 'running' or 'executing'"
                 ),
             )
 
@@ -231,6 +235,11 @@ class RescopeService:
         approval.rejected_targets = list(reject)
         approval.decision_reason = reason
 
+        # Make operator-accepted hosts in-scope so the resumed run actually reaches
+        # them (they were rejected only for being outside the whitelist at discovery).
+        if accept:
+            await self._merge_accepted_scope(session_id, approval, list(accept))
+
         new_status = await self._resume_or_kill(session_id, accept)
         await self._db.flush()
 
@@ -329,6 +338,35 @@ class RescopeService:
             select(Target).where(Target.project_id == project_id)
         )
         return result.scalars().first()
+
+    async def _merge_accepted_scope(
+        self, session_id: uuid.UUID, approval: RescopeApproval, accept: list[str]
+    ) -> None:
+        """Add operator-accepted hosts to the project whitelist's tier allow-field so
+        the resumed run treats them in-scope. The discovered tier selects the field
+        (passive_allowed / active_allowed / exploit_allowed), matching
+        WhitelistValidator.validate_host_by_tier."""
+        tier_field = {
+            "passive_no_target_contact": "passive_allowed",
+            "passive_low_touch": "passive_allowed",
+            "active_recon": "active_allowed",
+            "active_exploit": "exploit_allowed",
+        }
+        session = await self._fetch_session(session_id)
+        target = await self._fetch_project_target(session.project_id)
+        if target is None:
+            return
+        discovered = approval.discovered_targets if isinstance(approval.discovered_targets, dict) else {}
+        tier_map = discovered.get("tier_map", {}) or {}
+        rules = dict(target.whitelist_rules or {})
+        for host in accept:
+            field = tier_field.get(tier_map.get(host, "active_recon"), "active_allowed")
+            current = list(rules.get(field, []) or [])
+            if host not in current:
+                current.append(host)
+            rules[field] = current
+        target.whitelist_rules = rules
+        await self._db.flush()
 
     async def _resume_or_kill(
         self,

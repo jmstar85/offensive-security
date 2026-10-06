@@ -19,7 +19,7 @@ from app.models.session import PentestSession
 from app.models.user import Team, User, UserRole
 
 
-async def _seed_session_with_chains(db) -> tuple[uuid.UUID, list[uuid.UUID]]:
+async def _seed_session_with_chains(db) -> tuple[uuid.UUID, list[uuid.UUID], User]:
     team = Team(name=f"team-{uuid.uuid4()}")
     db.add(team)
     await db.flush()
@@ -73,20 +73,13 @@ async def _seed_session_with_chains(db) -> tuple[uuid.UUID, list[uuid.UUID]]:
     ]
     db.add_all(chains)
     await db.flush()
-    return session_row.id, [c.id for c in chains]
+    return session_row.id, [c.id for c in chains], user
 
 
 @pytest.mark.asyncio
 async def test_list_msgchains_returns_rows_in_start_order(db):
-    session_id, chain_ids = await _seed_session_with_chains(db)
+    session_id, chain_ids, user = await _seed_session_with_chains(db)
 
-    user = User(
-        email=f"caller-{uuid.uuid4()}@example.com",
-        password_hash="x" * 60,
-        full_name="Caller",
-        role=UserRole.MEMBER,
-        team_id=uuid.uuid4(),
-    )
 
     rows = await list_msgchains(
         session_id=session_id,
@@ -102,15 +95,8 @@ async def test_list_msgchains_returns_rows_in_start_order(db):
 @pytest.mark.asyncio
 async def test_list_msgchains_carries_message_count(db):
     """The endpoint surfaces `message_count` without returning message bodies."""
-    session_id, _ = await _seed_session_with_chains(db)
+    session_id, _, user = await _seed_session_with_chains(db)
 
-    user = User(
-        email=f"caller-{uuid.uuid4()}@example.com",
-        password_hash="x" * 60,
-        full_name="Caller",
-        role=UserRole.MEMBER,
-        team_id=uuid.uuid4(),
-    )
 
     rows = await list_msgchains(session_id=session_id, db=db, current_user=user)
 
@@ -120,14 +106,7 @@ async def test_list_msgchains_carries_message_count(db):
 
 @pytest.mark.asyncio
 async def test_list_msgchains_surfaces_retries_and_status(db):
-    session_id, _ = await _seed_session_with_chains(db)
-    user = User(
-        email=f"caller-{uuid.uuid4()}@example.com",
-        password_hash="x" * 60,
-        full_name="Caller",
-        role=UserRole.MEMBER,
-        team_id=uuid.uuid4(),
-    )
+    session_id, _, user = await _seed_session_with_chains(db)
 
     rows = await list_msgchains(session_id=session_id, db=db, current_user=user)
     pentester_row = next(r for r in rows if r.role_name == "pentester")

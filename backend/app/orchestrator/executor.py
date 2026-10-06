@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,12 +52,41 @@ class PlanExecutor:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._audit = AuditLogger(db)
+        # Set True when a step discovered an out-of-scope host and the session was
+        # parked at paused_for_rescope (RescopeService persisted a pending approval).
+        # OrchestratorService.run reads this to PARK the run (never completes/fails
+        # it) so the operator's rescope decision resumes from a durable pause.
+        self.paused_for_rescope: bool = False
         # Set True when a step tripped a SESSION-level safety kill (egress monitor
         # session scope, active_exploit-tier egress, or violation-cap escalation).
         # The caller (OrchestratorService.run) reads this to finalize the session
         # as ``killed`` instead of silently marking it ``completed`` — a safety
         # abort is not a successful engagement.
         self.killed: bool = False
+
+    async def _resume_progress(self, session_id: uuid.UUID) -> tuple[int, list[dict[str, Any]]]:
+        """Resume-from-offset state (1-c): (count of already-completed steps, their
+        findings). Completion COUNT is a stable position -- plan steps run in order,
+        so a re-launch after an approved rescope skips exactly the finished prefix
+        even when steps share a non-unique display 'order', and prior findings are
+        carried into the resumed report. A fresh session returns (0, [])."""
+        from sqlalchemy import select
+
+        rows = await self._db.execute(
+            select(AgentExecution.output_json)
+            .where(
+                AgentExecution.session_id == session_id,
+                AgentExecution.status == "completed",
+            )
+            .order_by(AgentExecution.started_at, AgentExecution.id)
+        )
+        prior: list[dict[str, Any]] = []
+        count = 0
+        for (output,) in rows.all():
+            count += 1
+            if isinstance(output, dict) and isinstance(output.get("findings"), list):
+                prior.extend(output["findings"])
+        return count, prior
 
     async def execute(
         self,
@@ -65,12 +95,28 @@ class PlanExecutor:
         target: dict,
         whitelist_rules: dict,
         actor_id: str,
+        resume_from_index: int = 0,
+        prior_findings: list[dict[str, Any]] | None = None,
     ) -> list[dict]:
-        """Execute all approved plan steps. Returns list of per-step results."""
-        egress_monitor = EgressMonitor(session_id, whitelist_rules)
-        all_findings: list[dict] = []
+        """Execute all approved plan steps. Returns list of per-step results.
 
-        for step in steps:
+        resume_from_index / prior_findings (resume-from-offset, 1-c): on an
+        approved-rescope re-launch OrchestratorService.run passes the count of
+        already-completed steps (a stable position) and their findings, so only the
+        remaining approved work runs and the resumed report keeps prior findings.
+        Defaults (0 / None) skip nothing -- first run, byte-identical replay, and
+        direct callers are unaffected and issue no extra query.
+        """
+        # Fail-closed: an executor instance that already parked for rescope must not
+        # run more steps if execute() is re-entered (1-c re-entry guard).
+        if self.paused_for_rescope:
+            return []
+        egress_monitor = EgressMonitor(session_id, whitelist_rules)
+        all_findings: list[dict] = list(prior_findings or [])
+
+        for index, step in enumerate(steps):
+            if index < resume_from_index:
+                continue
             agent_type = step["agent"]
             config = step.get("config", {})
             # Attach a Docker network so the tool container can reach the target.
@@ -334,6 +380,7 @@ class PlanExecutor:
                         # the rescope-pending state, then stop iterating further
                         # steps. The orchestrator will pick up again when the
                         # operator decides via RescopeService.decide_rescope.
+                        self.paused_for_rescope = True
                         await event_bus.publish(str(session_id), {
                             "type": "session_update",
                             "status": "paused_for_rescope",
