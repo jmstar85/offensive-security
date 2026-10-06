@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"/Users/minsung.jung/myproject/offensive-security/backend/app/orchestrator/reflector.py\"}",
+  "error": "File does not exist. Note: your current working directory is /Users/minsung.jung/myproject/offensive-security/backend.",
+  "timestamp": "2026-07-28T14:33:12.420Z",
+  "retry_count": 1
+}

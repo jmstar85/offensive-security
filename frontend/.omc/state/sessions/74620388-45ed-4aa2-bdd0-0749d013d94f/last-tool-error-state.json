@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/minsung.jung/myproject/offensive-security/frontend\\nnpx tsc --noEmit 2>&1 | head && echo \\\"tsc=$?\\\"\\nSP=/private/tmp/claude-501/-Users-minsung-jung-myproject-offensive-security/7...",
+  "error": "Exit code 1\ntsc=0\nfile:///private/tmp/claude-501/-Users-minsung-jung-myproject-offensive-security/74620388-45ed-4aa2-bdd0-0749d013d94f/scratchpad/togvis.mjs:10\nawait p.screenshot({ path: `${SP=process.argv[2]}/toggled-light.png` })\n                                ^\n\nReferenceError: SP is not defined\n    at file:///private/tmp/claude-501/-Users-minsung-jung-myproject-offensive-security/74620388-45ed-4aa2-bdd0-0749d013d94f/scratchpad/togvis.mjs:10:33\n\nNode.js v22.20.0",
+  "timestamp": "2026-07-19T08:05:41.087Z",
+  "retry_count": 1
+}

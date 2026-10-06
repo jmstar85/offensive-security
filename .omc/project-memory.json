@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1782887316573,
+  "lastScanned": 1791194183141,
   "projectRoot": "/Users/minsung.jung/myproject/offensive-security",
   "techStack": {
     "languages": [
@@ -37,10 +37,7 @@
       "docs",
       "scripts"
     ],
-    "gitBranches": {
-      "defaultBranch": "main",
-      "branchingStrategy": null
-    }
+    "gitBranches": null
   },
   "customNotes": [],
   "directoryMap": {
@@ -48,7 +45,7 @@
       "path": "backend",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1782887316563,
+      "lastAccessed": 1791194183125,
       "keyFiles": [
         "Dockerfile",
         "alembic.ini",
@@ -59,7 +56,7 @@
       "path": "ci",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1782887316563,
+      "lastAccessed": 1791194183126,
       "keyFiles": [
         "build-images.sh"
       ]
@@ -68,27 +65,27 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1782887316564,
+      "lastAccessed": 1791194183128,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 5,
-      "lastAccessed": 1782887316564,
+      "fileCount": 6,
+      "lastAccessed": 1791194183131,
       "keyFiles": [
         "claude-osint-onboarding.md",
         "deployment.md",
+        "implementation-status-2026-09-29.md",
         "rescope-flow.md",
-        "risk-tiers.md",
-        "safety.md"
+        "risk-tiers.md"
       ]
     },
     "frontend": {
       "path": "frontend",
       "purpose": null,
       "fileCount": 10,
-      "lastAccessed": 1782887316564,
+      "lastAccessed": 1791194183131,
       "keyFiles": [
         "Dockerfile",
         "index.html",
@@ -101,7 +98,7 @@
       "path": "mcp-server",
       "purpose": null,
       "fileCount": 5,
-      "lastAccessed": 1782887316565,
+      "lastAccessed": 1791194183132,
       "keyFiles": [
         "package-lock.json",
         "package.json",
@@ -112,7 +109,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 1,
-      "lastAccessed": 1782887316565,
+      "lastAccessed": 1791194183133,
       "keyFiles": [
         "lint_kali_dockerfile.sh"
       ]
@@ -121,7 +118,7 @@
       "path": "backend/app",
       "purpose": "Application code",
       "fileCount": 2,
-      "lastAccessed": 1782887316565,
+      "lastAccessed": 1791194183134,
       "keyFiles": [
         "__init__.py",
         "main.py"
@@ -130,44 +127,30 @@
     "frontend/dist": {
       "path": "frontend/dist",
       "purpose": "Distribution/build output",
-      "fileCount": 3,
-      "lastAccessed": 1782887316566,
+      "fileCount": 4,
+      "lastAccessed": 1791194183135,
       "keyFiles": [
-        "favicon.svg",
+        "favicon.png",
         "index.html",
         "manifest.webmanifest"
       ]
-    },
-    "frontend/node_modules": {
-      "path": "frontend/node_modules",
-      "purpose": "Dependencies",
-      "fileCount": 2,
-      "lastAccessed": 1782887316567,
-      "keyFiles": []
     },
     "mcp-server/dist": {
       "path": "mcp-server/dist",
       "purpose": "Distribution/build output",
       "fileCount": 28,
-      "lastAccessed": 1782887316568,
+      "lastAccessed": 1791194183135,
       "keyFiles": [
         "index.d.ts",
         "index.d.ts.map",
         "index.js"
       ]
     },
-    "mcp-server/node_modules": {
-      "path": "mcp-server/node_modules",
-      "purpose": "Dependencies",
-      "fileCount": 1,
-      "lastAccessed": 1782887316569,
-      "keyFiles": []
-    },
     "mcp-server/src": {
       "path": "mcp-server/src",
       "purpose": "Source code",
       "fileCount": 7,
-      "lastAccessed": 1782887316569,
+      "lastAccessed": 1791194183135,
       "keyFiles": [
         "index.ts",
         "memory-tools.ts",
@@ -178,115 +161,12 @@
       "path": "mcp-server/test",
       "purpose": "Test files",
       "fileCount": 1,
-      "lastAccessed": 1782887316570,
+      "lastAccessed": 1791194183135,
       "keyFiles": [
         "run-tests.mjs"
       ]
     }
   },
-  "hotPaths": [
-    {
-      "path": "backend/app/api/v1/users.py",
-      "accessCount": 6,
-      "lastAccessed": 1782221313329,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/App.tsx",
-      "accessCount": 5,
-      "lastAccessed": 1782220789677,
-      "type": "file"
-    },
-    {
-      "path": "backend/tests/integration/test_create_user.py",
-      "accessCount": 4,
-      "lastAccessed": 1782221351823,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/api/v1/auth.py",
-      "accessCount": 3,
-      "lastAccessed": 1782133669210,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/pages/Login.tsx",
-      "accessCount": 3,
-      "lastAccessed": 1782133729543,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/api/client.ts",
-      "accessCount": 3,
-      "lastAccessed": 1782220747203,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/pages/Admin.tsx",
-      "accessCount": 3,
-      "lastAccessed": 1782220808469,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/api/deps.py",
-      "accessCount": 1,
-      "lastAccessed": 1782133587906,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/core/security.py",
-      "accessCount": 1,
-      "lastAccessed": 1782133588340,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/models/user.py",
-      "accessCount": 1,
-      "lastAccessed": 1782133589078,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/models/audit.py",
-      "accessCount": 1,
-      "lastAccessed": 1782133644230,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/pages/ResetPassword.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1782133705994,
-      "type": "file"
-    },
-    {
-      "path": "backend/tests/integration/test_reset_password.py",
-      "accessCount": 1,
-      "lastAccessed": 1782133748823,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/core/database.py",
-      "accessCount": 1,
-      "lastAccessed": 1782220670061,
-      "type": "file"
-    },
-    {
-      "path": "frontend/src/pages/CreateUser.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1782220775161,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/main.py",
-      "accessCount": 1,
-      "lastAccessed": 1782222927808,
-      "type": "file"
-    },
-    {
-      "path": "backend/app/core/config.py",
-      "accessCount": 1,
-      "lastAccessed": 1782222928424,
-      "type": "file"
-    }
-  ],
+  "hotPaths": [],
   "userDirectives": []
 }

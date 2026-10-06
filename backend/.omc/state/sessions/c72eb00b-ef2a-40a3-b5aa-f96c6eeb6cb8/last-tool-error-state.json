@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__plugin_oh-my-claudecode_t__lsp_diagnostics",
+  "tool_input_preview": "{\"file\":\"/Users/minsung.jung/myproject/offensive-security/backend/tests/api/test_pentest_execution_launcher.py\"}",
+  "error": "Language server 'ty' not found.\nInstall with: Install ty from https://github.com/astral-sh/ty",
+  "timestamp": "2026-07-03T02:25:43.068Z",
+  "retry_count": 4
+}

@@ -1,0 +1,449 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1783249012245,
+  "projectRoot": "/Users/minsung.jung/myproject/offensive-security/backend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "fastapi",
+        "version": null,
+        "category": "backend"
+      },
+      {
+        "name": "pytest",
+        "version": null,
+        "category": "testing"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cd /Users/minsung.jung/myproject/offensive-security/frontend && npx tsc --noEmit -p tsconfig.json; echo \"TSC_EXIT=$?\"",
+    "testCommand": "cd /Users/minsung.jung/myproject/offensive-security/backend\n.venv/bin/python -m pytest -q 2>&1 | tail -4",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "app",
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "alembic": {
+      "path": "alembic",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1783249012235,
+      "keyFiles": [
+        "__init__.py",
+        "env.py"
+      ]
+    },
+    "app": {
+      "path": "app",
+      "purpose": "Application code",
+      "fileCount": 2,
+      "lastAccessed": 1783249012235,
+      "keyFiles": [
+        "__init__.py",
+        "main.py"
+      ]
+    },
+    "offensive_security_agent.egg-info": {
+      "path": "offensive_security_agent.egg-info",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1783249012235,
+      "keyFiles": [
+        "PKG-INFO",
+        "SOURCES.txt",
+        "dependency_links.txt",
+        "requires.txt",
+        "top_level.txt"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1783249012236,
+      "keyFiles": [
+        "run_deployed_scanme_session.py",
+        "verify_pr7_ollama_loop.py",
+        "verify_pr7_scanme.py"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 2,
+      "lastAccessed": 1783249012236,
+      "keyFiles": [
+        "__init__.py",
+        "conftest.py"
+      ]
+    },
+    "app/api": {
+      "path": "app/api",
+      "purpose": "API routes",
+      "fileCount": 2,
+      "lastAccessed": 1783249012236,
+      "keyFiles": [
+        "__init__.py",
+        "deps.py"
+      ]
+    },
+    "app/models": {
+      "path": "app/models",
+      "purpose": "Data models",
+      "fileCount": 14,
+      "lastAccessed": 1783249012237,
+      "keyFiles": [
+        "__init__.py",
+        "agent.py",
+        "agent_family.py"
+      ]
+    },
+    "tests/api": {
+      "path": "tests/api",
+      "purpose": "API routes",
+      "fileCount": 8,
+      "lastAccessed": 1783249012237,
+      "keyFiles": [
+        "__init__.py",
+        "test_copilot_models.py",
+        "test_credential_not_found_handler.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "app/orchestrator/performer.py",
+      "accessCount": 36,
+      "lastAccessed": 1785249712824,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/service.py",
+      "accessCount": 34,
+      "lastAccessed": 1785249944835,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/roles/pentester.py",
+      "accessCount": 29,
+      "lastAccessed": 1785249727998,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/executor.py",
+      "accessCount": 22,
+      "lastAccessed": 1785249382547,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/safety_exec.py",
+      "accessCount": 20,
+      "lastAccessed": 1785249739209,
+      "type": "file"
+    },
+    {
+      "path": "app/safety/egress_monitor.py",
+      "accessCount": 13,
+      "lastAccessed": 1785249164945,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_autonomous_dispatch_safety.py",
+      "accessCount": 13,
+      "lastAccessed": 1785250036858,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/workflow_service.py",
+      "accessCount": 10,
+      "lastAccessed": 1785249162747,
+      "type": "file"
+    },
+    {
+      "path": "app/api/v1/pentest_sessions.py",
+      "accessCount": 10,
+      "lastAccessed": 1785249308768,
+      "type": "file"
+    },
+    {
+      "path": "app/safety/kill_switch.py",
+      "accessCount": 9,
+      "lastAccessed": 1785249151716,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/runtime_delegator.py",
+      "accessCount": 9,
+      "lastAccessed": 1785249673275,
+      "type": "file"
+    },
+    {
+      "path": "app/core/config.py",
+      "accessCount": 7,
+      "lastAccessed": 1785065549596,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_executor_topic_routing.py",
+      "accessCount": 6,
+      "lastAccessed": 1785160761636,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_agents.py",
+      "accessCount": 5,
+      "lastAccessed": 1784721308376,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/registry.py",
+      "accessCount": 5,
+      "lastAccessed": 1784727026949,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_approval_flow.py",
+      "accessCount": 4,
+      "lastAccessed": 1784631977925,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/workflow_plan.py",
+      "accessCount": 3,
+      "lastAccessed": 1784631920256,
+      "type": "file"
+    },
+    {
+      "path": "app/models/session.py",
+      "accessCount": 3,
+      "lastAccessed": 1784632126372,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_workflow_chat_flow.py",
+      "accessCount": 3,
+      "lastAccessed": 1784632177443,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_registry_w3_slugs.py",
+      "accessCount": 3,
+      "lastAccessed": 1784727123336,
+      "type": "file"
+    },
+    {
+      "path": "tests/safety/test_live_path_safety_verification.py",
+      "accessCount": 3,
+      "lastAccessed": 1785065894300,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/backends/kali.py",
+      "accessCount": 3,
+      "lastAccessed": 1785159657768,
+      "type": "file"
+    },
+    {
+      "path": "tests/api/test_workflow_interview_model.py",
+      "accessCount": 2,
+      "lastAccessed": 1784427038250,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_force_approve_override.py",
+      "accessCount": 2,
+      "lastAccessed": 1784557904317,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_workflow_service_flag_on.py",
+      "accessCount": 2,
+      "lastAccessed": 1784558077298,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_agents_narration.py",
+      "accessCount": 2,
+      "lastAccessed": 1785065055002,
+      "type": "file"
+    },
+    {
+      "path": "tests/safety/test_safety_chain_full_envelope_spy.py",
+      "accessCount": 2,
+      "lastAccessed": 1785065881957,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/roles/seed_xbow.py",
+      "accessCount": 2,
+      "lastAccessed": 1785249038191,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/base.py",
+      "accessCount": 2,
+      "lastAccessed": 1785249227658,
+      "type": "file"
+    },
+    {
+      "path": "app/orchestrator/ambiguity_loop.py",
+      "accessCount": 1,
+      "lastAccessed": 1784422481927,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_msgchains_endpoint.py",
+      "accessCount": 1,
+      "lastAccessed": 1784422500249,
+      "type": "file"
+    },
+    {
+      "path": "tests/conftest.py",
+      "accessCount": 1,
+      "lastAccessed": 1784422500703,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_pentest_messages_history.py",
+      "accessCount": 1,
+      "lastAccessed": 1784422616974,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/nmap.py",
+      "accessCount": 1,
+      "lastAccessed": 1784466900267,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_interview_autoblock.py",
+      "accessCount": 1,
+      "lastAccessed": 1784553006661,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_ambiguity_loop_full.py",
+      "accessCount": 1,
+      "lastAccessed": 1784557779919,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_interview_envelope_salvage.py",
+      "accessCount": 1,
+      "lastAccessed": 1784557834556,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_agent_single_label_filter.py",
+      "accessCount": 1,
+      "lastAccessed": 1784557969691,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_generator_interview_budget.py",
+      "accessCount": 1,
+      "lastAccessed": 1784557981244,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_ollama_role_client_routing.py",
+      "accessCount": 1,
+      "lastAccessed": 1784558036598,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_role_send_model_resolution.py",
+      "accessCount": 1,
+      "lastAccessed": 1784631829990,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_chat_draft_promotion.py",
+      "accessCount": 1,
+      "lastAccessed": 1784632001604,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/test_execution_timeout.py",
+      "accessCount": 1,
+      "lastAccessed": 1784721267696,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/katana.py",
+      "accessCount": 1,
+      "lastAccessed": 1784726964553,
+      "type": "file"
+    },
+    {
+      "path": "app/agents/zap.py",
+      "accessCount": 1,
+      "lastAccessed": 1784726981547,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/test_katana_zap_adapters.py",
+      "accessCount": 1,
+      "lastAccessed": 1784727071366,
+      "type": "file"
+    },
+    {
+      "path": "tests/regression/test_planexecutor_refactor_byte_identical.py",
+      "accessCount": 1,
+      "lastAccessed": 1785064605364,
+      "type": "file"
+    },
+    {
+      "path": "tests/regression/test_deterministic_lane_unchanged_with_xbow_off.py",
+      "accessCount": 1,
+      "lastAccessed": 1785064610143,
+      "type": "file"
+    },
+    {
+      "path": "tests/regression/_live_replay_harness.py",
+      "accessCount": 1,
+      "lastAccessed": 1785064614174,
+      "type": "file"
+    },
+    {
+      "path": "tests/_regression/v11_comparator.py",
+      "accessCount": 1,
+      "lastAccessed": 1785064628035,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

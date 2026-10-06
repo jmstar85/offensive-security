@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /Users/minsung.jung/myproject/offensive-security/backend\\n.venv/bin/python -c \\\"\\nimport app.core.config, app.observability.metrics, app.safety.egress_monitor\\nimport app.orchestrator.s...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 10, in <module>\n    print('metric:', app.observability.metrics.metrics.egress_violation_total.label_names)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'MetricsRegistry' object has no attribute 'metrics'\nimports OK\negress fields: True\nconfig default scope: session | cap: 3",
+  "timestamp": "2026-07-26T11:36:55.836Z",
+  "retry_count": 1
+}

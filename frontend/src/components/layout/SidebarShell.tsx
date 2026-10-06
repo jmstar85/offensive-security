@@ -95,7 +95,7 @@ export function SidebarShell({ children }: Props) {
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
           <div className="w-8 h-8 rounded-lg bg-background border border-border flex items-center justify-center flex-shrink-0 shadow-[0_0_18px_rgba(239,68,68,0.18)]">
-            <img src="/favicon.svg" alt="OSA" className="w-5 h-5" />
+            <img src="/favicon.png" alt="OSA" className="w-5 h-5" />
           </div>
           {!collapsed && (
             <span className="font-bold text-sm tracking-tight text-foreground">OSA Platform</span>
